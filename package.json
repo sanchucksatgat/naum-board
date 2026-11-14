@@ -9,16 +9,19 @@
     "build": "vite build --config web/vite.config.ts && wrangler deploy --dry-run --outdir dist/worker",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit && tsc -p test/tsconfig.json --noEmit",
     "test": "vitest run",
-    "deploy": "vite build --config web/vite.config.ts && wrangler deploy"
+    "deploy": "vite build --config web/vite.config.ts && wrangler deploy",
+    "build:guide": "vite build --config web/setup/vite.guide.config.ts"
   },
   "dependencies": {
     "hono": "^4.13.18",
-    "preact": "^10.29.8"
+    "preact": "^10.29.8",
+    "uqr": "^0.1.3"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.8.2",
     "@cloudflare/workers-types": "^5.20261114.1",
     "@preact/preset-vite": "^2.10.6",
+    "jsqr": "^1.4.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.8",
     "vitest": "^4.1.12",
@@ -28,16 +31,16 @@
   "cloudflare": {
     "bindings": {
       "GOOGLE_CLIENT_ID": {
-        "description": "Google Cloud 콘솔에서 만든 **OAuth 클라이언트 ID** (웹 애플리케이션). 끝이 `.apps.googleusercontent.com` 입니다."
+        "description": "설치가 끝난 뒤 Worker → 설정 → 변수 및 비밀에 **비밀(Secret)** 유형으로 넣습니다. Google Cloud에서 만든 OAuth 클라이언트 ID (끝이 `.apps.googleusercontent.com`). 설치 안내의 13단계를 보세요."
       },
       "GOOGLE_CLIENT_SECRET": {
-        "description": "위 OAuth 클라이언트의 **클라이언트 보안 비밀번호**."
+        "description": "설치가 끝난 뒤 Worker → 설정 → 변수 및 비밀에 **비밀(Secret)** 유형으로 넣습니다. 위 OAuth 클라이언트의 클라이언트 보안 비밀번호 (`GOCSPX-`로 시작)."
       },
       "SESSION_SECRET": {
-        "description": "선택. 비워 두면 자동으로 만들어집니다. 직접 정하려면 32자 이상 무작위 문자열."
+        "description": "넣지 않아도 됩니다. 비워 두면 처음 실행할 때 자동으로 만들어 보관합니다."
       },
       "OWNER_EMAIL": {
-        "description": "선택. 이 Google 계정만 선생님(소유자)으로 로그인할 수 있게 합니다."
+        "description": "선택. 이 Google 계정만 선생님(주인)으로 로그인할 수 있게 합니다. 다른 계정이 먼저 주인이 되었을 때 이 값을 넣고 로그인하면 주인이 바뀝니다."
       }
     }
   }

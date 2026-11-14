@@ -543,7 +543,7 @@ export interface ResetPinResponse {
 /** GET /api/teacher/students/:id/portfolio */
 export interface PortfolioResponse {
   student: TeacherStudent;
-  boards: Array<{ id: string; code: string; title: string; archived: boolean; posts: PostView[] }>;
+  boards: Array<{ id: string; code: string; title: string; archived: boolean; posts: PostView[]; /** 파일 보기 토큰 (12시간): `/api/files/{id}/{attachment.id}?t={fileToken}` */ fileToken?: string }>;
 }
 
 /** GET /api/teacher/recent-posts?limit= */

@@ -6,6 +6,7 @@ import { driveRoutes, setDriveDeps } from "./drive";
 import { authenticateBoardActor } from "./board/actor";
 import { boardRoutes } from "./board/routes";
 import { teacherRoutes } from "./registry/routes";
+import { setupRoutes } from "./setup/routes";
 
 export { Registry } from "./registry";
 export { Board } from "./board";
@@ -17,6 +18,7 @@ app.route("/", authRoutes);
 app.route("/", driveRoutes);
 app.route("/", boardRoutes);
 app.route("/", teacherRoutes);
+app.route("/", setupRoutes);
 
 // 태스크3 Drive 라우트가 학생도 인식하도록 태스크2 인증을 연결한다.
 setDriveDeps({ authenticateBoardActor });

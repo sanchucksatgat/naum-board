@@ -23,3 +23,11 @@ export interface MeResponse {
 export interface ApiErrorBody {
   error: { code: string; message: string };
 }
+
+/**
+ * GET /api/setup/drive-check (교사 로그인 필요) — 설치 점검용.
+ * 선생님 드라이브에 실제로 한 번 접근해 본다. Drive API 를 켜지 않았으면 code "api_disabled".
+ */
+export type SetupDriveCheck =
+  | { ok: true }
+  | { ok: false; code: "api_disabled" | "reconnect" | "storage_full" | "unavailable" | "not_configured" | "other"; message: string };

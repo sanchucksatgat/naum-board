@@ -1,0 +1,43 @@
+# 설치 안내(web/setup)를 GitHub Pages 에 공개 페이지로 올린다.
+# 선생님들이 설치 버튼으로 만든 복사본에서는 돌지 않도록, 저장소 변수 PUBLISH_GUIDE=true 인 곳(원본)에서만 실행한다.
+name: 설치 안내 페이지 게시
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/setup/**", "web/ui/tokens.css", "web/lib/api.ts", "src/shared/api.ts", ".github/workflows/guide-pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: guide-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: vars.PUBLISH_GUIDE == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:guide
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/guide
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

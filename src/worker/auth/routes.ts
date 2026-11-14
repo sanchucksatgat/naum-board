@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import type { DriveStatus, MeResponse } from "../../shared/api";
 import { readVar, type Env } from "../env";
-import { htmlPage } from "../http";
+import { htmlPage, type PageLink } from "../http";
 import { getRegistry } from "../stubs";
 import { forgetIsolateAccessToken, GoogleAccessError, getGoogleAccessToken } from "./access";
 import { clearCookie, getCookie, serializeCookie } from "./cookies";
-import { buildAuthorizationUrl, DRIVE_FILE_SCOPE, exchangeAuthorizationCode, pkceChallenge, readIdToken } from "./google";
+import { buildAuthorizationUrl, DRIVE_FILE_SCOPE, exchangeAuthorizationCode, GoogleTokenError, pkceChallenge, readIdToken } from "./google";
 import { getSigningSecret } from "./secret";
 import { clearSessionCookie, createSessionCookie, forgetOwnerCache, getTeacher } from "./session";
 import { randomToken, signToken, timingSafeEqualStr, verifyToken } from "./token";
@@ -26,10 +26,13 @@ function googleConfig(env: Env) {
 }
 
 const notConfiguredPage = () =>
-  htmlPage(503, "설정이 필요해요", "Google 로그인 설정(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)이 아직 없어요. 설치 안내를 따라 설정해 주세요.", {
-    href: "/setup",
-    label: "설치 안내 보기",
-  });
+  htmlPage(503, "설정이 필요해요", "Google 로그인 설정(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)이 아직 없어요. 설치 안내를 따라 설정해 주세요.", [
+    { href: "/setup#check", label: "설치 안내에서 이어 하기" },
+    { href: "/setup#help-not-configured", label: "넣었는데도 이 화면이 나와요" },
+  ]);
+
+/** 설치 안내(/setup)의 "자주 막히는 곳" 항목으로 가는 링크. 키는 web/setup/help.tsx 의 HELP 키. */
+const helpLink = (id: string, label = "해결 방법 보기"): PageLink => ({ href: `/setup#help-${id}`, label });
 
 export const authRoutes = new Hono<{ Bindings: Env }>();
 
@@ -63,8 +66,8 @@ authRoutes.get("/auth/google/callback", async (c) => {
   const cfg = googleConfig(c.env);
   if (!cfg) return notConfiguredPage();
   const url = new URL(c.req.url);
-  const retry = { href: "/auth/google", label: "다시 로그인하기" };
-  const fail = (status: number, title: string, msg: string, link = retry) => {
+  const retry: PageLink = { href: "/auth/google", label: "다시 로그인하기" };
+  const fail = (status: number, title: string, msg: string, link: PageLink | PageLink[] = retry) => {
     const res = htmlPage(status, title, msg, link);
     res.headers.append("set-cookie", clearCookie(OAUTH_STATE_COOKIE));
     return res;
@@ -80,7 +83,12 @@ authRoutes.get("/auth/google/callback", async (c) => {
 
   const oauthErr = url.searchParams.get("error");
   if (oauthErr) {
-    return fail(400, "로그인이 취소되었어요", "Google 로그인 화면에서 허용하지 않았어요. 다시 시도해 주세요.");
+    return fail(
+      400,
+      "로그인이 취소되었어요",
+      "Google 로그인 화면에서 허용하지 않았어요. 다시 시도해 주세요. 계속 이렇다면 Google Cloud의 앱이 아직 ‘테스트 중’이거나 다른 계정을 골랐을 수 있어요.",
+      [retry, helpLink("access-denied")],
+    );
   }
   const code = url.searchParams.get("code");
   if (!code) return fail(400, "로그인을 다시 시작해 주세요", "Google 에서 받은 정보가 없어요.");
@@ -95,7 +103,19 @@ authRoutes.get("/auth/google/callback", async (c) => {
       redirectUri: callbackUrl(c.req.raw),
       codeVerifier: saved.v,
     });
-  } catch {
+  } catch (e) {
+    const err = e instanceof GoogleTokenError ? e.oauthError : "";
+    if (err === "invalid_client" || err === "unauthorized_client") {
+      return fail(
+        502,
+        "Google 설정 값이 맞지 않아요",
+        "Cloudflare에 넣은 GOOGLE_CLIENT_ID 또는 GOOGLE_CLIENT_SECRET이 Google에서 만든 클라이언트와 맞지 않아요. 값을 다시 확인해 주세요.",
+        [helpLink("secret"), retry],
+      );
+    }
+    if (err === "redirect_uri_mismatch") {
+      return fail(502, "주소 설정이 맞지 않아요", "Google 클라이언트의 ‘승인된 리디렉션 URI’가 이 나눔보드 주소와 달라요.", [helpLink("redirect"), retry]);
+    }
     return fail(502, "로그인하지 못했어요", "Google 과 연결하는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.");
   }
   const claims = tokens.id_token ? readIdToken(tokens.id_token, cfg.clientId) : null;
@@ -108,7 +128,10 @@ authRoutes.get("/auth/google/callback", async (c) => {
   // 3) OWNER_EMAIL 이 있으면 그 계정만
   const ownerEmail = readVar(c.env, "OWNER_EMAIL")?.toLowerCase() ?? null;
   if (ownerEmail && email !== ownerEmail) {
-    return fail(403, "이 계정으로는 들어올 수 없어요", "이 나눔보드는 지정된 교사 계정만 사용할 수 있어요. 다른 Google 계정으로 로그인해 주세요.");
+    return fail(403, "이 계정으로는 들어올 수 없어요", "이 나눔보드는 지정된 교사 계정만 사용할 수 있어요. 다른 Google 계정으로 로그인해 주세요.", [
+      retry,
+      helpLink("owner", "주인 계정 바꾸는 법"),
+    ]);
   }
 
   // 4) 소유자 확인 (최초 로그인 계정이 소유자)
@@ -120,7 +143,10 @@ authRoutes.get("/auth/google/callback", async (c) => {
     ownerEmail,
   });
   if (!result.ok) {
-    return fail(403, "이 계정으로는 들어올 수 없어요", "이 나눔보드는 이미 다른 교사 계정에 연결되어 있어요. 처음 연결한 계정으로 로그인해 주세요.");
+    return fail(403, "이 계정으로는 들어올 수 없어요", "이 나눔보드는 이미 다른 교사 계정에 연결되어 있어요. 처음 연결한 계정으로 로그인해 주세요.", [
+      retry,
+      helpLink("owner", "주인 계정 바꾸는 법"),
+    ]);
   }
   forgetOwnerCache();
   forgetIsolateAccessToken();

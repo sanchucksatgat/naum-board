@@ -3,7 +3,8 @@
  */
 import { Hono } from "hono";
 import type { Env } from "../env";
-import { teacherOnly, type TeacherVariables } from "../auth";
+import { getSigningSecret, signToken, teacherOnly, type TeacherVariables } from "../auth";
+import { FILE_VIEW_TOKEN_PURPOSE, type FileViewTokenPayload } from "../../shared/files";
 import { HttpError } from "../http";
 import { getBoardStub, getRegistry } from "../stubs";
 import {
@@ -180,6 +181,7 @@ teacherRoutes.post("/api/teacher/students/:id/unlock", async (c) => {
 teacherRoutes.get("/api/teacher/students/:id/portfolio", async (c) => {
   const t = await getRegistry(c.env).portfolioTargets(c.req.param("id"));
   if (!t) throw new HttpError(404, "not_found", "학생을 찾을 수 없어요.");
+  const secret = await getSigningSecret(c.env);
   const boards = await Promise.all(
     t.boards.map(async (b) => ({
       id: b.id,
@@ -187,6 +189,8 @@ teacherRoutes.get("/api/teacher/students/:id/portfolio", async (c) => {
       title: b.title,
       archived: b.archived,
       posts: await getBoardStub(c.env, b.id).portfolioFor(t.student.ref),
+      // 포트폴리오 화면에서 첨부 그림을 보여 주기 위한 파일 보기 토큰 (스냅숏과 같은 모양, 12시간)
+      fileToken: await signToken(secret, FILE_VIEW_TOKEN_PURPOSE, { boardId: b.id } satisfies FileViewTokenPayload, 12 * 60 * 60),
     })),
   );
   const body: PortfolioResponse = { student: t.student, boards: boards.filter((b) => b.posts.length > 0) };

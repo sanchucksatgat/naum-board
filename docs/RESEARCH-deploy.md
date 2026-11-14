@@ -108,3 +108,15 @@
 
 - `developers.google.com`, `support.google.com`, `developers.cloudflare.com`: 직접 접속 불가(DNS 차단). Cloudflare 는 GitHub 원본으로 대체 확인, Google 은 검색 요약만.
 - 실제 Cloudflare 무료 계정 배포, 실제 Google OAuth 동의 화면 확인: 하지 않음.
+
+---
+
+## 추가 조사 (태스크6, 2026-11-14) — 위의 ❓ 일부 정리
+
+- **설치 버튼의 시크릿 칸을 비워 둘 수 있나 → 없다(🔎 여러 사용자 보고, 공식 문서엔 언급 없음).** `.dev.vars.example` 에 적힌 이름은 모두 필수 입력으로 나오고 빈 칸이면 Deploy 를 막는다는 보고가 2026-05 ~ 10 사이 여러 건(cloudflare/workers-sdk 이슈 #14075, 다른 템플릿 저장소 PR 들). 그래서 `.dev.vars.example` 의 모든 줄을 주석으로 바꿔 **버튼 화면에서 아무것도 묻지 않게** 했고, 값은 설치 뒤 대시보드(Worker → Settings → Variables and Secrets → Add, Type=Secret → Deploy, ✅ 문서)에서 넣도록 안내한다.
+- **버튼이 만드는 저장소는 fork 가 아니다(✅ 문서 그림 `dtw-user-flow.png`: 새 저장소, 커밋 1개 "source repo import" by cloudflare[bot]; 🔎 다른 프로젝트 이슈들도 "fork 링크·공통 이력 없음").** 따라서 "Sync fork" 로 업데이트할 수 없다. 안내의 업데이트 방법: 처음 한 번 원본을 Fork → Worker Settings → Build 에서 저장소 연결을 Fork 로 바꾸기(✅ "Connect an existing Worker" 문서) → 이후 Sync fork → Update branch 로 자동 재배포(❓ 실제로 확인 안 함).
+- 버튼 설정 화면 항목(✅ 문서 그림): Set up your application / Configure repository / Git account / Repository name / Create private Git repository / Name your application / Worker name. 마지막 버튼 이름("Create and deploy")은 ❓.
+- workers.dev 하위 도메인은 Workers & Pages 를 처음 열 때 자동 배정(🔎 검색 요약상 현 문서 문구). Workers Builds 기본 Node 24(✅ build-image 문서).
+- Google: 2025-06 부터 클라이언트 보안 비밀번호는 **만들 때 한 번만** 보이고 이후 가려짐, 6개월 쓰지 않은 OAuth 클라이언트는 자동 삭제(🔎 Google 개발자 블로그 2025-04-28 검색 요약). 브랜드 검증 없으면 동의 화면에 앱 이름 대신 도메인이 보일 수 있음(🔎).
+- 학교 Workspace: 관리자가 서드파티 앱을 막으면 `admin_policy_enforced` / "관리자 검토 필요" 화면(🔎). 교사 계정이 Cloud 프로젝트를 만들 수 있는지는 학교마다 다름(❓). 안내는 "개인 Gmail 추천, 학교 드라이브가 필요하면 프로젝트는 개인 계정으로 만들고 첫 로그인만 학교 계정" 으로 정리.
+- **Google Drive API 사용 설정이 필요**하다(토큰 발급은 되지만 Drive 호출이 403 `accessNotConfigured`). 안내에 단계로 넣고, `/api/setup/drive-check` 로 점검한다.
