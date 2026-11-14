@@ -5,7 +5,7 @@
  * 2. 피드백은 카드 작성자와 교사에게만.
  * 3. 익명 모드: 학생에게 다른 학생의 이름·학번·실제 ref 를 보내지 않는다 (별칭 "a:…" 과 "익명").
  *    개인별 열 id·제목도 별칭으로 바꾸고, 학생 목록(members)은 보내지 않는다.
- * 4. 학생은 다른 학생의 실명을 받지 않는다: 닉네임이 있으면 닉네임만 (기존 탭보드 규칙). 교사는 실명+닉네임.
+ * 4. 학생에게 보이는 이름은 "닉네임 > 이름" (기존 탭보드 규칙): 닉네임이 있으면 실명은 보내지 않는다. 교사는 실명+닉네임.
  * 5. 좋아요는 수와 "내가 눌렀는지"만. 누가 눌렀는지는 아무에게도 안 보낸다.
  */
 import type {
@@ -150,7 +150,11 @@ export function noticeView(n: NoticeRow): NoticeView {
 export function activeMembers(members: Map<string, MemberRow>, kind?: MemberRow["kind"]): MemberRow[] {
   const out: MemberRow[] = [];
   for (const m of members.values()) if (!m.removed && (!kind || m.kind === kind)) out.push(m);
-  return out.sort((a, b) => compareKo(a.number, b.number) || compareKo(a.name, b.name) || (a.created_at - b.created_at));
+  // 명단 학생은 학번순, 자유 입장 학생은 들어온 순서
+  return out.sort((a, b) =>
+    a.kind !== b.kind ? (a.kind === "roster" ? -1 : 1)
+    : a.kind === "roster" ? compareKo(a.number, b.number) || compareKo(a.name, b.name)
+    : a.created_at - b.created_at || (a.ref < b.ref ? -1 : 1));
 }
 
 /** 지금 입장 방식에 맞는 구성원 (명단 모드: 명단 학생, 자유 모드: 자유 입장 학생) */

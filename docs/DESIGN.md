@@ -147,3 +147,12 @@ PIN 저장 변경: 무료 요금제 CPU 한도(요청당 10ms) 때문에 PBKDF2 
   - `POST /api/boards/:code/export` (교사) → `{ url }` 구글 시트 링크
   - `GET /api/boards/:code/drive` (교사) → `{ folderUrl, backup: { status, lastAt } }`
 - 병렬 작업 중 상대 구현이 아직 없으면 위 시그니처대로 임시 구현/모의 객체로 테스트하고, 통합은 지휘관이 맞춘다.
+
+## 11. 프런트 작업 경계 (태스크 4·5·6 병렬)
+
+- 공통 모양: `web/ui/tokens.css`(지휘관 작성)의 변수와 클래스(.btn, .input, .card, .modal, .chip, .toast …)를 쓴다. 색·간격을 직접 쓰지 않는다. 라이트/다크 모두 지원. 휴대폰 폭 360px에서 가로 스크롤 없음. 누르는 요소 최소 44px.
+- 태스크 4 소유: `web/lib/realtime.ts`(웹소켓 클라이언트·상태 저장소), `web/ui/*.tsx`(Modal·Toast 등 공용 컴포넌트), `web/board/*`(학생·교사 공용 보드 화면과 보드 안 교사 동작), `web/student/*`(입장 흐름).
+- 태스크 5 소유: `web/teacher/*`(로그인 상태, 대시보드, 보드 만들기·설정, 명단, 공유, 인쇄, 포트폴리오, 내보내기), `web/HomePage.tsx`. 교사가 보드를 열면 `/b/{코드}`(태스크 4 화면)로 이동한다.
+- 태스크 6 소유: `web/setup/*`, 설치 관련 문서, 배포 버튼 설정.
+- 병렬 작업 중에는 서로의 디렉터리를 고치지 않는다. 자기 디렉터리 안에 필요한 작은 컴포넌트를 두고, 공용화는 통합 단계에서 한다. `web/main.tsx`·`web/lib/router.tsx`·`web/lib/api.ts`는 최소 수정만.
+- 서버 계약은 `src/shared/protocol.ts`, `src/shared/files.ts`, `docs/PROTOCOL.md`가 단일 출처. 서버 수정이 필요하면 최소로 하고 보고서에 명시.

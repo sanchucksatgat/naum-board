@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import type { Env } from "./env";
 import { HttpError } from "./http";
 import { authRoutes } from "./auth";
-import { driveRoutes } from "./drive";
+import { driveRoutes, setDriveDeps } from "./drive";
+import { authenticateBoardActor } from "./board/actor";
+import { boardRoutes } from "./board/routes";
+import { teacherRoutes } from "./registry/routes";
 
 export { Registry } from "./registry";
 export { Board } from "./board";
@@ -12,6 +15,11 @@ const app = new Hono<{ Bindings: Env }>();
 // 각 태스크는 자기 라우터를 여기 한 줄로 붙인다 (예: app.route("/", boardRoutes)).
 app.route("/", authRoutes);
 app.route("/", driveRoutes);
+app.route("/", boardRoutes);
+app.route("/", teacherRoutes);
+
+// 태스크3 Drive 라우트가 학생도 인식하도록 태스크2 인증을 연결한다.
+setDriveDeps({ authenticateBoardActor });
 
 app.notFound((c) => {
   const path = new URL(c.req.url).pathname;

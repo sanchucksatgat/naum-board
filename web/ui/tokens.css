@@ -1,0 +1,79 @@
+/* 나눔보드 공통 디자인 토큰과 기본 부품. 모든 화면이 이 파일의 변수와 클래스를 쓴다.
+   색을 직접 쓰지 말고 변수를 쓴다. 새 공통 부품이 필요하면 이 파일에 추가한다. */
+:root {
+  --c-bg: #f6f7f4;
+  --c-surface: #ffffff;
+  --c-surface-2: #eef1ec;
+  --c-line: #dfe4dc;
+  --c-text: #1f2a24;
+  --c-text-2: #5b6861;
+  --c-primary: #1f8a5b;
+  --c-primary-strong: #176c47;
+  --c-primary-soft: #e3f3ea;
+  --c-on-primary: #ffffff;
+  --c-accent: #f2784b;
+  --c-accent-soft: #fdeae2;
+  --c-warn: #b7791f;
+  --c-warn-soft: #fbf1dc;
+  --c-danger: #c53b3b;
+  --c-danger-soft: #fbe6e6;
+  --c-like: #e2466a;
+  --shadow-1: 0 1px 2px rgba(20, 40, 30, .08), 0 2px 8px rgba(20, 40, 30, .06);
+  --shadow-2: 0 8px 30px rgba(20, 40, 30, .18);
+  --r-s: 8px; --r-m: 12px; --r-l: 18px; --r-full: 999px;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  --fs-s: 13px; --fs-m: 15px; --fs-l: 18px; --fs-xl: 22px; --fs-2xl: 28px;
+  --tap: 44px; /* 손가락으로 누르는 요소의 최소 높이 */
+  --font: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-bg: #141a17; --c-surface: #1d2521; --c-surface-2: #26302b; --c-line: #34413a;
+    --c-text: #e8eeea; --c-text-2: #a3b0a9;
+    --c-primary: #4cc38a; --c-primary-strong: #6fd6a2; --c-primary-soft: #1d3a2c; --c-on-primary: #0d1f16;
+    --c-accent: #ff9670; --c-accent-soft: #40261c;
+    --c-warn: #e3b25a; --c-warn-soft: #3a2f17; --c-danger: #f07a7a; --c-danger-soft: #402020; --c-like: #ff7a98;
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4); --shadow-2: 0 8px 30px rgba(0,0,0,.6);
+  }
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--c-bg); color: var(--c-text); font: var(--fs-m)/1.55 var(--font); word-break: keep-all; overflow-wrap: anywhere; }
+button, input, textarea, select { font: inherit; color: inherit; }
+a { color: var(--c-primary-strong); }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--c-primary) 55%, transparent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); min-height: var(--tap); padding: 0 var(--sp-4);
+  border: 1px solid var(--c-line); border-radius: var(--r-m); background: var(--c-surface); font-weight: 600; cursor: pointer; text-decoration: none; color: var(--c-text); }
+.btn:hover { background: var(--c-surface-2); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--c-primary); border-color: var(--c-primary); color: var(--c-on-primary); }
+.btn-primary:hover { background: var(--c-primary-strong); border-color: var(--c-primary-strong); }
+.btn-danger { color: var(--c-danger); border-color: color-mix(in srgb, var(--c-danger) 40%, var(--c-line)); }
+.btn-ghost { border-color: transparent; background: transparent; }
+.btn-small { min-height: 34px; padding: 0 var(--sp-3); font-size: var(--fs-s); border-radius: var(--r-s); }
+
+.field { display: grid; gap: var(--sp-1); }
+.field > label, .label { font-size: var(--fs-s); font-weight: 600; color: var(--c-text-2); }
+.input, .textarea, .select { width: 100%; min-height: var(--tap); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--c-line); border-radius: var(--r-m); background: var(--c-surface); }
+.textarea { min-height: 96px; resize: vertical; }
+.hint { font-size: var(--fs-s); color: var(--c-text-2); }
+.error-text { font-size: var(--fs-s); color: var(--c-danger); }
+
+.card { background: var(--c-surface); border: 1px solid var(--c-line); border-radius: var(--r-l); box-shadow: var(--shadow-1); padding: var(--sp-4); }
+.chip { display: inline-flex; align-items: center; gap: var(--sp-1); padding: 2px var(--sp-2); border-radius: var(--r-full); background: var(--c-surface-2); font-size: var(--fs-s); color: var(--c-text-2); }
+.chip-primary { background: var(--c-primary-soft); color: var(--c-primary-strong); }
+.chip-warn { background: var(--c-warn-soft); color: var(--c-warn); }
+.chip-danger { background: var(--c-danger-soft); color: var(--c-danger); }
+
+.modal-backdrop { position: fixed; inset: 0; background: rgba(10, 20, 15, .5); display: grid; place-items: center; padding: var(--sp-4); z-index: 100; }
+.modal { width: min(560px, 100%); max-height: calc(100dvh - 32px); overflow: auto; background: var(--c-surface); border-radius: var(--r-l); box-shadow: var(--shadow-2); padding: var(--sp-5); }
+@media (max-width: 600px) { .modal-backdrop { place-items: end center; padding: 0; } .modal { border-radius: var(--r-l) var(--r-l) 0 0; width: 100%; } }
+.toast-area { position: fixed; left: 50%; bottom: var(--sp-5); transform: translateX(-50%); display: grid; gap: var(--sp-2); z-index: 200; width: min(420px, calc(100% - 32px)); }
+.toast { background: var(--c-text); color: var(--c-bg); border-radius: var(--r-m); padding: var(--sp-3) var(--sp-4); box-shadow: var(--shadow-2); }
+
+.row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.stack { display: grid; gap: var(--sp-3); }
+.muted { color: var(--c-text-2); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

@@ -34,7 +34,8 @@ describe("signToken / verifyToken", () => {
     claims.sub = "b";
     const forged = base64UrlEncode(new TextEncoder().encode(JSON.stringify(claims)));
     expect(await verifyToken(SECRET, "session", `${forged}.${sig}`)).toBeNull();
-    const flipped = sig.slice(0, -1) + (sig.endsWith("A") ? "B" : "A");
+    // 마지막 글자는 패딩 비트만 달라 같은 바이트로 풀릴 수 있어 첫 글자를 바꾼다.
+    const flipped = (sig.startsWith("A") ? "B" : "A") + sig.slice(1);
     expect(await verifyToken(SECRET, "session", `${body}.${flipped}`)).toBeNull();
     for (const bad of ["", "abc", "a.b.c", ".", `${body}.`, `${body}.!!!`]) {
       expect(await verifyToken(SECRET, "session", bad)).toBeNull();

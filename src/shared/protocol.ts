@@ -244,7 +244,7 @@ export interface MeView {
 export type BackupState = "never" | "pending" | "ok" | "error" | "unavailable";
 
 /** 백업 상태 (교사에게만) */
-export interface BackupStatus {
+export interface BackupInfo {
   state: BackupState;
   /** 마지막 성공 시각 */
   lastSuccessAt: number | null;
@@ -281,7 +281,7 @@ export interface BoardSnapshot {
   /** 교사 화면, 명단 모드에서만: 아직 카드가 없는 학생 ref */
   notSubmitted?: string[];
   /** 교사 화면에서만 */
-  backup?: BackupStatus;
+  backup?: BackupInfo;
   presence: PresenceInfo;
   /** 파일 보기 토큰 (12시간). `/api/files/{boardId}/{attachmentId}?t=` */
   fileToken: string;
@@ -377,7 +377,7 @@ export type ServerMessage =
   /** 교사에게만 */
   | { t: "submission"; notSubmitted: string[] }
   /** 교사에게만 */
-  | { t: "backup.status"; backup: BackupStatus };
+  | { t: "backup.status"; backup: BackupInfo };
 
 export type ServerMessageType = ServerMessage["t"];
 
@@ -461,7 +461,7 @@ export interface BoardSummary {
 /** GET /api/teacher/boards/:id */
 export interface BoardDetail extends BoardSummary {
   settings: BoardSettings;
-  backup: BackupStatus;
+  backup: BackupInfo;
 }
 
 /** POST /api/teacher/boards */
