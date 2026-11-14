@@ -55,6 +55,7 @@ async function step(name, fn) {
   try {
     await fn();
   } catch (e) {
+    for (const [i, pg] of (global.__pages || []).entries()) await pg.screenshot({ path: path.join(OUT, `fail-${name}-${i}.png`) }).catch(() => {});
     ok(name, false, String(e && e.message ? e.message.split("\n")[0] : e));
   }
 }
@@ -142,6 +143,7 @@ async function noHScroll(page) {
   await B.fill("#pin-again", "1357");
   await B.click("button[type=submit]");
   await B.waitForSelector(".wall", { timeout: 15000 });
+  global.__pages = [A, B, teacher];
 
   // ── A: 글쓰기 (휴대폰 떠 있는 단추) ──
   await step("A 글 올리기", async () => {
