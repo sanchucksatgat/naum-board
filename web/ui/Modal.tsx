@@ -1,5 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef } from "preact/hooks";
+import { createPortal } from "preact/compat";
 
 /**
  * 대화상자. 휴대폰(≤600px)에서는 tokens.css 규칙대로 아래에서 올라오는 시트가 된다.
@@ -88,7 +89,8 @@ export function Modal(props: ModalProps) {
     };
   }, []);
 
-  return (
+  // body 로 옮겨 그린다: 카드(content-visibility)·고정 윗줄(z-index) 안에 갇히지 않게
+  return createPortal(
     <div
       class="modal-backdrop"
       onMouseDown={(e) => {
@@ -114,6 +116,7 @@ export function Modal(props: ModalProps) {
         <div class="ui-modal-body">{props.children}</div>
         {props.footer ? <div class="ui-modal-foot">{props.footer}</div> : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

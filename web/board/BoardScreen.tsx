@@ -168,6 +168,17 @@ function StatusPill() {
   );
 }
 
+/** 잠금 표시: 스크롤해도 늘 보이도록 윗줄에 */
+function LockChip() {
+  const locked = useView((v) => v.settings.locked);
+  if (!locked) return null;
+  return (
+    <span class="chip chip-warn topbar-lock" title="잠금 중: 볼 수만 있어요">
+      🔒<span class="topbar-hide-phone"> 잠금</span>
+    </span>
+  );
+}
+
 function TopBar(props: { onLeave: () => void; setToken: (t: string | null) => void }) {
   const ctx = useBoard();
   const title = useView((v) => v.settings.title);
@@ -214,6 +225,7 @@ function TopBar(props: { onLeave: () => void; setToken: (t: string | null) => vo
           </button>
         ) : null}
         <span class="topbar-spacer" />
+        <LockChip />
         <StatusPill />
         {ctx.role === "student" ? (
           <div class="menu-wrap" ref={menuRef}>

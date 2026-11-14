@@ -187,3 +187,4 @@
 .board-projector .notice { font-size: var(--fs-l); }
 .board-projector .notice-title { font-size: var(--fs-xl); }
 .board-projector .bcard-img-btn { cursor: zoom-in; }
+.topbar-lock { flex: none; font-weight: 700; }

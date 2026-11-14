@@ -217,7 +217,8 @@ async function noHScroll(page) {
   });
 
   await B.screenshot({ path: path.join(OUT, "05-desktop-student.png") });
-  await A.screenshot({ path: path.join(OUT, "06-phone-student.png") });
+  await A.evaluate(() => window.scrollTo(0, 0));
+  await A.screenshot({ path: path.join(OUT, "06-phone-student.png"), fullPage: true });
   await teacher.screenshot({ path: path.join(OUT, "07-teacher.png") });
 
   // ── 교사가 A 카드 숨기기 → B 화면에서 사라짐 ──
@@ -228,6 +229,7 @@ async function noHScroll(page) {
     ok("B: 교사가 숨긴 카드가 새로 고침 없이 사라짐", true);
     await A.waitForSelector(".bcard.is-hidden >> text=선생님이 숨겼어요", { timeout: 5000 });
     ok("A(작성자): 숨김 상태가 표시됨", true);
+    await A.locator(".bcard.is-hidden").scrollIntoViewIfNeeded();
     await A.screenshot({ path: path.join(OUT, "08-phone-hidden.png") });
     await tcard.locator("text=👁️ 다시 보이기").click();
     await B.waitForSelector(".bcard >> text=떡잎이 나왔어요", { timeout: 5000 });
@@ -256,6 +258,7 @@ async function noHScroll(page) {
     ok("A: 잠금 띠가 보임", true);
     ok("A: 잠금 중에는 글쓰기 단추가 없음", (await A.locator(".fab").count()) === 0 && (await A.locator(".col-add").count()) === 0);
     ok("A: 잠금 중 좋아요 단추 비활성", await A.locator(".bcard-like").first().isDisabled());
+    await A.evaluate(() => window.scrollTo(0, 0));
     await A.screenshot({ path: path.join(OUT, "10-phone-locked.png") });
     await teacher.click("text=🔓 잠금 풀기");
     await A.waitForSelector(".fab", { timeout: 5000 });
