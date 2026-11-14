@@ -20,6 +20,53 @@ export const REGISTRY_MIGRATIONS: readonly string[] = [
      created_at INTEGER NOT NULL,
      updated_at INTEGER NOT NULL
    );`,
+  // 2 (태스크2): 반·명단·보드·로그인 시도 제한
+  `CREATE TABLE IF NOT EXISTS classes (
+     id TEXT PRIMARY KEY,
+     name TEXT NOT NULL,
+     created_at INTEGER NOT NULL,
+     updated_at INTEGER NOT NULL
+   );
+   CREATE TABLE IF NOT EXISTS students (
+     id TEXT PRIMARY KEY,
+     class_id TEXT NOT NULL,
+     number TEXT NOT NULL,
+     name TEXT NOT NULL,
+     nickname TEXT NOT NULL DEFAULT '',
+     group_name TEXT NOT NULL DEFAULT '',
+     pin_salt TEXT NOT NULL,
+     pin_hash TEXT,
+     initial_pin TEXT,
+     pin_version INTEGER NOT NULL DEFAULT 0,
+     pin_failed INTEGER NOT NULL DEFAULT 0,
+     locked_until INTEGER NOT NULL DEFAULT 0,
+     created_at INTEGER NOT NULL,
+     updated_at INTEGER NOT NULL,
+     UNIQUE (class_id, number)
+   );
+   CREATE TABLE IF NOT EXISTS boards (
+     id TEXT PRIMARY KEY,
+     code TEXT NOT NULL UNIQUE,
+     title TEXT NOT NULL,
+     type TEXT NOT NULL,
+     column_mode TEXT NOT NULL,
+     entry_mode TEXT NOT NULL,
+     class_id TEXT,
+     locked INTEGER NOT NULL DEFAULT 0,
+     archived INTEGER NOT NULL DEFAULT 0,
+     created_at INTEGER NOT NULL,
+     updated_at INTEGER NOT NULL,
+     drive_folder_id TEXT,
+     post_count INTEGER NOT NULL DEFAULT 0,
+     last_post_at INTEGER,
+     recent_json TEXT NOT NULL DEFAULT '[]'
+   );
+   CREATE INDEX IF NOT EXISTS boards_class ON boards (class_id);
+   CREATE TABLE IF NOT EXISTS login_throttle (
+     key TEXT PRIMARY KEY,
+     window_start INTEGER NOT NULL,
+     count INTEGER NOT NULL
+   );`,
 ];
 
 /** ctx.storage.sql 에 아직 적용되지 않은 마이그레이션을 적용한다. */

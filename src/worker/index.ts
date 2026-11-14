@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "./env";
 import { HttpError } from "./http";
 import { authRoutes } from "./auth";
+import { driveRoutes } from "./drive";
 
 export { Registry } from "./registry";
 export { Board } from "./board";
@@ -10,6 +11,7 @@ const app = new Hono<{ Bindings: Env }>();
 
 // 각 태스크는 자기 라우터를 여기 한 줄로 붙인다 (예: app.route("/", boardRoutes)).
 app.route("/", authRoutes);
+app.route("/", driveRoutes);
 
 app.notFound((c) => {
   const path = new URL(c.req.url).pathname;
