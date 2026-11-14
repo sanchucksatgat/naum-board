@@ -105,7 +105,7 @@
 
 | t | 언제 | 누구에게 |
 |---|---|---|
-| `snapshot` | 접속 직후, `sync`, 익명·열 구성·입장 방식 변경, 명단 변경 | 각자 걸러서 |
+| `snapshot` | 접속 직후, `sync`, 익명·열 구성·입장 방식 변경, 명단 변경(이름·학번·닉네임·모둠·구성원 — PIN 등록·초기화만 바뀐 것은 그 학생 연결만 4001 로 끊고 스냅숏은 안 보냄) | 각자 걸러서 |
 | `ack` / `error` | 쓰기 결과 | 보낸 사람 |
 | `post.upsert` | 카드 생성·수정·승인·숨김 해제·피드백 변경, 작성자 이름 변경 | 그 카드를 볼 수 있는 사람 |
 | `post.remove` | 삭제, 또는 그 사람이 더는 못 보게 됨(숨김, 학생 수정으로 승인 대기) | 전에 볼 수 있던 사람 |
@@ -250,7 +250,7 @@ POST /api/boards/K7QX2M/login
 | `POST /api/teacher/boards/:id/archive` · `/unarchive` | → `BoardDetail` |
 | `DELETE /api/teacher/boards/:id` | → 204 (Drive 폴더는 남김) |
 | `PUT /api/teacher/boards/:id/class` | `{ classId \| null }` → `BoardDetail` (명단 사본을 보드로 보냄) |
-| `GET /api/teacher/recent-posts?limit=12` | → `{ posts: RecentPost[] }` (보관 안 된 보드, 최대 50, 백업 알람 때 갱신 → 최대 약 30초 늦음) |
+| `GET /api/teacher/recent-posts?limit=12` | → `{ posts: RecentPost[] }` (보관 안 된 보드, 최대 50, 백업 알람 때 갱신 → 최대 약 30초 늦음). 사진이 있으면 `image: { id, width?, height? }` 와 그 보드의 `fileToken`(12시간) → `/api/files/{boardId}/{image.id}?t={fileToken}` |
 | `GET /api/teacher/classes` | → `{ classes: ClassSummary[] }` |
 | `POST /api/teacher/classes` | `{ name, students?: StudentRowInput[] }` → 201 `{ class, students }` |
 | `PATCH /api/teacher/classes/:id` | `{ name }` → `{ class }` |
@@ -274,6 +274,7 @@ Drive 관련 경로(업로드, 파일 보기, 시트 내보내기, `GET /api/boa
 알람은 ① 교사 대시보드용 통계·최근 글을 Registry 로 보내고 ② `writeBoardBackup` 으로 `게시글 백업.json` 을 갱신한다.
 실패하면 30초·1분·2분·4분… 최대 30분 간격으로 8번까지 다시 시도하고, 그래도 안 되면 다음 변경 때까지 쉰다.
 교사는 `snapshot.backup` 과 `backup.status` 로 `state: never|pending|ok|error|unavailable`(Drive 연결 끊김), 마지막 성공·오류·다음 시도 시각을 본다.
+`lastErrorCode` 가 `api_disabled` 이면 교사 Google Cloud 프로젝트에서 Drive API 가 꺼진 것(403 `accessNotConfigured`) → 화면이 `/setup#help-api` 로 안내한다.
 
 ## 11. 요금(무료 요금제) 관련 설계
 

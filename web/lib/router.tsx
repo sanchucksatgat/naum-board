@@ -15,7 +15,13 @@ export function matchPath(pattern: string, pathname: string): Record<string, str
   for (let i = 0; i < p.length; i++) {
     const seg = p[i]!;
     const val = s[i]!;
-    if (seg.startsWith(":")) params[seg.slice(1)] = decodeURIComponent(val);
+    if (seg.startsWith(":")) {
+      try {
+        params[seg.slice(1)] = decodeURIComponent(val);
+      } catch {
+        return null; // 잘못된 % 인코딩 주소: 화면이 깨지지 않게 "찾을 수 없음"으로
+      }
+    }
     else if (seg !== val) return null;
   }
   return params;

@@ -746,7 +746,17 @@ function LoginStep(p: StepProps) {
 }
 
 function CheckStep(p: StepProps) {
-  if (p.mode === "instance") return <LiveCheck ctx={p.ctx} />;
+  if (p.mode === "instance")
+    return (
+      <LiveCheck
+        ctx={p.ctx}
+        onResult={(allOk) => {
+          if (!!p.state.done.check === allOk) return;
+          const { check: _drop, ...rest } = p.state.done;
+          p.update({ done: allOk ? { ...rest, check: true } : rest });
+        }}
+      />
+    );
   const d = p.derived;
   return (
     <>

@@ -159,11 +159,21 @@ function RecentPosts() {
             {posts.data.map((p) => (
               <li key={p.boardId + p.postId} class="card t-recent-item">
                 <a href={`/b/${p.boardCode}`} class="t-recent-link">
+                  {p.image && p.fileToken && (
+                    <img
+                      class="t-recent-img"
+                      src={`/api/files/${encodeURIComponent(p.boardId)}/${encodeURIComponent(p.image.id)}?t=${encodeURIComponent(p.fileToken)}`}
+                      alt=""
+                      loading="lazy"
+                      width={p.image.width}
+                      height={p.image.height}
+                    />
+                  )}
                   <span class="t-recent-board">{p.boardTitle}</span>
                   <span class="t-recent-who">
                     {p.authorNumber ? `${p.authorNumber} ` : ""}
                     {p.authorName}
-                    {p.hasImage && <span class="chip t-ml">사진</span>}
+                    {p.hasImage && !(p.image && p.fileToken) && <span class="chip t-ml">사진</span>}
                     {p.status === "pending" && <span class="chip chip-warn t-ml">승인 대기</span>}
                     {p.status === "hidden" && <span class="chip chip-danger t-ml">숨김</span>}
                   </span>

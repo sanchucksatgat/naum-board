@@ -971,7 +971,7 @@ export class Board extends DurableObject<Env> {
     if (!this.columns().some((c) => c.id === columnId)) return { columnId, duplicate: true };
     if (this.columns().length <= 1) fail("limit_reached", "열은 하나 이상 있어야 해요.");
     if (this.sql.exec("SELECT 1 FROM posts WHERE column_id = ? LIMIT 1", columnId).toArray().length) {
-      fail("column_not_empty", "카드가 있는 열은 지울 수 없어요. 카드를 먼저 옮기거나 지워 주세요.", 409);
+      fail("column_not_empty", "카드가 있는 칸은 지울 수 없어요. 카드를 먼저 옮기거나 지워 주세요.", 409);
     }
     this.sql.exec("DELETE FROM columns WHERE id = ?", columnId);
     this.dirty({ columns: true });
@@ -1137,11 +1137,17 @@ export class Board extends DurableObject<Env> {
     const incoming = new Map(list.map((m) => [m.ref, m]));
     const kick: string[] = [];
     let changed = 0;
+    // 화면에 보이는 값(이름·학번·닉네임·모둠·구성원 목록)이 바뀌었을 때만 모두에게 새 스냅숏을 보낸다.
+    // PIN 등록·초기화(pin_version 만 바뀜)는 그 학생의 예전 연결만 끊으면 된다 — 학생 30명이 처음 들어오며
+    // PIN 을 정할 때마다 접속한 모두에게 큰 스냅숏을 보내던 것을 막는다.
+    let visible = false;
     this.ctx.storage.transactionSync(() => {
       for (const r of list) {
         const m = members.get(r.ref);
-        if (m && !m.removed && m.kind === "roster" && m.number === r.number && m.name === r.name && m.nickname === r.nickname && m.group_name === r.group && m.pin_version === r.pinVersion) continue;
+        const same = !!m && !m.removed && m.kind === "roster" && m.number === r.number && m.name === r.name && m.nickname === r.nickname && m.group_name === r.group;
+        if (same && m.pin_version === r.pinVersion) continue;
         if (m && m.pin_version !== r.pinVersion) kick.push(r.ref);
+        if (!same) visible = true;
         this.upsertRosterMember(r, now);
         changed++;
       }
@@ -1149,6 +1155,7 @@ export class Board extends DurableObject<Env> {
         if (m.kind === "roster" && !m.removed && !incoming.has(m.ref)) {
           this.sql.exec("UPDATE members SET removed = 1 WHERE ref = ?", m.ref);
           kick.push(m.ref);
+          visible = true;
           changed++;
         }
       }
@@ -1157,7 +1164,7 @@ export class Board extends DurableObject<Env> {
     this.dirty({ members: true });
     const kicked = new Set(kick);
     this.closeWhere((a) => kicked.has(a.ref), CLOSE_CODES.reauth, "다시 입장해 주세요.");
-    await this.broadcastSnapshot((a) => !kicked.has(a.ref));
+    if (visible) await this.broadcastSnapshot((a) => !kicked.has(a.ref));
     return { changed };
   }
 
@@ -1333,6 +1340,7 @@ export class Board extends DurableObject<Env> {
       lastAttemptAt: b.lastAttemptAt,
       failures: b.failures,
       lastError: b.lastError,
+      lastErrorCode: b.failures > 0 ? b.lastErrorCode : null,
       nextAttemptAt: b.nextAttemptAt,
     };
   }
@@ -1392,7 +1400,9 @@ export class Board extends DurableObject<Env> {
       .map((p) => {
         const parts = model.parts.get(p.id)!;
         const v = postView(p, parts, ctx)!;
+        const img = parts.attachments.find((a) => a.kind === "image");
         return {
+          ...(img ? { image: { id: img.id, ...(img.width && img.height ? { width: img.width, height: img.height } : {}) } } : {}),
           postId: p.id,
           authorName: v.authorName,
           ...(v.authorNumber ? { authorNumber: v.authorNumber } : {}),

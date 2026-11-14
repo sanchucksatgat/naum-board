@@ -9,9 +9,6 @@ import { requireTeacher } from "../auth";
 import { DRIVE_API, driveFetch } from "../drive/client";
 import { DriveError } from "../drive/errors";
 
-/** Google 이 "이 프로젝트에서 Drive API 를 켜지 않았다"고 할 때 주는 reason */
-const API_DISABLED_REASONS = new Set(["accessNotConfigured", "SERVICE_DISABLED"]);
-
 export async function checkDriveAccess(env: Env): Promise<SetupDriveCheck> {
   try {
     // drive.file 범위에서도 허용되는 가장 가벼운 호출 (앱이 만든 파일 1개까지만 조회)
@@ -19,7 +16,7 @@ export async function checkDriveAccess(env: Env): Promise<SetupDriveCheck> {
     return { ok: true };
   } catch (e) {
     if (!(e instanceof DriveError)) throw e;
-    if (e.status === 403 && e.reason && API_DISABLED_REASONS.has(e.reason)) {
+    if (e.code === "api_disabled") {
       return { ok: false, code: "api_disabled", message: "Google Cloud 프로젝트에서 Google Drive API가 꺼져 있어요." };
     }
     const code: Exclude<SetupDriveCheck, { ok: true }>["code"] =

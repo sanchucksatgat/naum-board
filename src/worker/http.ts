@@ -29,6 +29,11 @@ export function htmlPage(status: number, title: string, message: string, link?: 
 <body><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>${links.map((l) => `<p><a href="${escapeHtml(l.href)}">${escapeHtml(l.label)}</a></p>`).join("")}</body></html>`;
   return new Response(body, {
     status,
-    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "x-frame-options": "DENY",
+    },
   });
 }

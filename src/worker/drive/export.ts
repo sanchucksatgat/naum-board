@@ -7,12 +7,14 @@ import { DriveError } from "./errors";
 import { getDriveDeps, type BoardRef } from "./deps";
 import { ensureBoardFolders } from "./folders";
 
-/** 시트가 수식으로 해석하지 않게: =,+,-,@,탭,CR 로 시작하면 앞에 ' 를 붙인다 (CSV 주입 방지) */
+/** 시트가 수식으로 해석하지 않게: (앞 공백·줄바꿈 뒤라도) =,+,-,@ 나 탭·CR·LF 로 시작하면 앞에 ' 를 붙인다 (CSV 주입 방지) */
 function cell(v: unknown): string {
   let s = v === null || v === undefined ? "" : String(v);
-  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  if (/^[\s]*[=+\-@]/.test(s) || /^[\t\r\n]/.test(s)) s = "'" + s;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
+
+export { cell as csvCell };
 
 export function toCsv(header: string[], rows: string[][]): string {
   return [header, ...rows].map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n";

@@ -147,6 +147,25 @@ describe("Drive 클라이언트", () => {
     expect((e as DriveError).message).toContain("저장 공간");
   });
 
+  it("Drive API 를 켜지 않은 프로젝트(403 accessNotConfigured)는 api_disabled + 설치 안내 도움말 주소", async () => {
+    let n = 0;
+    drive.overrides.push((req) => {
+      if (!req.url.startsWith("https://www.googleapis.com/")) return null;
+      n++;
+      return Response.json(
+        { error: { code: 403, status: "PERMISSION_DENIED", errors: [{ domain: "usageLimits", reason: "accessNotConfigured" }] } },
+        { status: 403 },
+      );
+    });
+    const e = (await ensureBoardFolders(env, board.id).catch((x: unknown) => x)) as DriveError;
+    expect(e).toBeInstanceOf(DriveError);
+    expect(e.code).toBe("api_disabled");
+    expect(e.message).toContain("Google Drive API");
+    expect(e.message).toContain("/setup#help-api");
+    expect(e.toHttpError().code).toBe("drive_api_disabled");
+    expect(n).toBe(1); // 다시 시도하지 않는다
+  });
+
   it("rate limit·5xx 는 백오프 후 재시도", async () => {
     let n = 0;
     drive.overrides.push((req) => {

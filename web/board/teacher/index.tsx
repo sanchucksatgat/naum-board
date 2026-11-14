@@ -347,6 +347,14 @@ function BackupBadge() {
     return () => clearInterval(t);
   }, []);
   const b = backupText(backup, now);
+  if (backup?.state === "error" && backup.lastErrorCode === "api_disabled") {
+    // Drive API 가 꺼진 경우: 해결 방법(설치 안내 도움말)으로 바로 보낸다
+    return (
+      <a class={"chip tbar-backup is-" + b.kind} title={b.title} href="/setup#help-api" target="_blank" rel="noopener">
+        ⚠️ 백업 실패 · Drive API 켜기
+      </a>
+    );
+  }
   return (
     <span class={"chip tbar-backup is-" + b.kind} title={b.title}>
       {b.text}

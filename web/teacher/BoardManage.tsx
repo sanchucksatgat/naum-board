@@ -229,6 +229,13 @@ function DriveSection(props: { board: BoardDetail }) {
       <div>
         <p class="label">백업</p>
         <p class={"t-tone-" + backup.tone}>{backup.text}</p>
+        {b.backup?.lastErrorCode === "api_disabled" && (
+          <p>
+            <a href="/setup#help-api" target="_blank" rel="noopener">
+              Google Drive API 켜는 법 보기
+            </a>
+          </p>
+        )}
       </div>
       <div class="stack t-gap-2">
         {drive.status === "loading" && <p class="hint">드라이브 폴더를 확인하는 중이에요…</p>}

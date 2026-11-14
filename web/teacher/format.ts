@@ -61,7 +61,7 @@ export function backupText(b: BackupInfo | undefined | null, now = Date.now()): 
       return { text: "드라이브 연결이 끊겨 백업하지 못하고 있어요. 위의 ‘다시 연결’을 눌러 주세요.", tone: "danger" };
     case "error":
       return {
-        text: `백업이 잠시 실패했어요${b.lastError ? `: ${b.lastError}` : ""}. 자동으로 다시 시도해요.`,
+        text: `백업이 잠시 실패했어요${b.lastError ? `: ${b.lastError.replace(/[.。]\s*$/, "")}` : ""}. 자동으로 다시 시도해요.`,
         tone: "warn",
       };
   }

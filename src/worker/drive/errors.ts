@@ -8,6 +8,7 @@ import { HttpError } from "../http";
  * - rate_limited: Google 이 잠시 요청을 막음 (재시도 후에도)
  * - unavailable: Google 서버 일시 오류·네트워크 오류
  * - not_configured: 설치(OAuth 클라이언트)·교사 연결이 아직 안 됨
+ * - api_disabled: 교사의 Google Cloud 프로젝트에서 Google Drive API 를 켜지 않음 (403 accessNotConfigured)
  * - forbidden: 그 밖의 권한 문제
  * - bad_request: 요청이 잘못됨 (코드 버그 가능성)
  */
@@ -18,6 +19,7 @@ export type DriveErrorCode =
   | "rate_limited"
   | "unavailable"
   | "not_configured"
+  | "api_disabled"
   | "forbidden"
   | "bad_request";
 
@@ -28,6 +30,8 @@ const MESSAGES: Record<DriveErrorCode, string> = {
   rate_limited: "Google 드라이브가 바빠요. 잠시 후 다시 시도해 주세요.",
   unavailable: "Google 드라이브와 잠시 연결되지 않아요. 잠시 후 다시 시도해 주세요.",
   not_configured: "아직 선생님 Google 계정이 연결되지 않았어요.",
+  api_disabled:
+    "선생님의 Google Cloud 프로젝트에서 Google Drive API가 꺼져 있어요. 설치 안내(내 주소/setup#help-api)의 ‘Drive API 켜기’를 따라 켜 주세요.",
   forbidden: "드라이브 파일에 접근할 권한이 없어요.",
   bad_request: "드라이브 요청을 처리하지 못했어요. 다시 시도해 주세요.",
 };
@@ -39,6 +43,7 @@ const HTTP_STATUS: Record<DriveErrorCode, number> = {
   rate_limited: 503,
   unavailable: 503,
   not_configured: 503,
+  api_disabled: 503,
   forbidden: 403,
   bad_request: 502,
 };

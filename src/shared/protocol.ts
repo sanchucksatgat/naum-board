@@ -254,6 +254,8 @@ export interface BackupInfo {
   failures: number;
   /** 마지막 오류 (한국어 요약) */
   lastError: string | null;
+  /** 마지막 오류 종류 (예: "api_disabled" → 설치 안내의 Drive API 도움말로 안내) */
+  lastErrorCode?: string | null;
   /** 다음 시도 예정 시각 */
   nextAttemptAt: number | null;
 }
@@ -559,6 +561,10 @@ export interface RecentPost {
   excerpt: string;
   status: PostStatus;
   hasImage: boolean;
+  /** 첫 사진 (대시보드 미리보기). 주소: /api/files/{boardId}/{image.id}?t={fileToken} */
+  image?: { id: string; width?: number; height?: number };
+  /** 이 보드의 파일 보기 토큰 (image 가 있을 때만, 12시간) */
+  fileToken?: string;
   createdAt: number;
 }
 export interface RecentPostsResponse {

@@ -110,7 +110,18 @@ teacherRoutes.put("/api/teacher/boards/:id/class", async (c) => {
 
 teacherRoutes.get("/api/teacher/recent-posts", async (c) => {
   const limit = Number(c.req.query("limit") ?? 12);
-  const body: RecentPostsResponse = { posts: await getRegistry(c.env).recentPosts(Number.isFinite(limit) ? limit : 12) };
+  const posts = await getRegistry(c.env).recentPosts(Number.isFinite(limit) ? limit : 12);
+  // 사진 미리보기: 보드마다 파일 보기 토큰 하나 (포트폴리오와 같은 방식, 12시간). 서명만 하므로 DO 요청이 늘지 않는다.
+  const secret = await getSigningSecret(c.env);
+  const tokens = new Map<string, Promise<string>>();
+  const tokenFor = (boardId: string) => {
+    let t = tokens.get(boardId);
+    if (!t) tokens.set(boardId, (t = signToken(secret, FILE_VIEW_TOKEN_PURPOSE, { boardId } satisfies FileViewTokenPayload, 12 * 60 * 60)));
+    return t;
+  };
+  const body: RecentPostsResponse = {
+    posts: await Promise.all(posts.map(async (p) => (p.image ? { ...p, fileToken: await tokenFor(p.boardId) } : p))),
+  };
   return c.json(body, 200, noStore);
 });
 

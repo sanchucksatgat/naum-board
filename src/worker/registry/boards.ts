@@ -56,7 +56,7 @@ export type BoardMetaPatch = Partial<Pick<BoardRecord, "title" | "type" | "colum
 export interface BoardStats {
   postCount: number;
   lastPostAt: number | null;
-  recent: Array<Omit<RecentPost, "boardId" | "boardCode" | "boardTitle">>;
+  recent: Array<Omit<RecentPost, "boardId" | "boardCode" | "boardTitle" | "fileToken">>;
 }
 
 type Row = BoardRow & Record<string, SqlStorageValue>;

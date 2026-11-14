@@ -69,7 +69,8 @@ export function pageOrigin(request: Request): string {
   if (o) {
     try {
       const ou = new URL(o);
-      if (ou.host === url.host || ou.hostname === "localhost" || ou.hostname === "127.0.0.1") return ou.origin;
+      const local = (h: string) => h === "localhost" || h === "127.0.0.1";
+      if (ou.host === url.host || (local(url.hostname) && local(ou.hostname))) return ou.origin;
     } catch {
       /* 무시 */
     }

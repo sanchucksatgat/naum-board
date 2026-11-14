@@ -37,6 +37,10 @@ export function SetupPage(props: { params?: Record<string, string>; standalone?:
         setState((s) => {
           const done = { ...s.done };
           for (const id of INSTANCE_DONE) done[id] = true;
+          // 설치된 곳의 상태가 증명하는 단계는 모두 끝난 것 (예: 주인이 있으면 Google 설정·첫 로그인까지 끝남).
+          // 이렇게 해야 마지막 단계에서 진행 막대·남은 시간이 "15/15 단계"와 맞는다.
+          const reached = me.setup.ownerClaimed ? idx("check") : me.setup.googleConfigured ? idx("login") : idx("gproject");
+          for (const st of STEPS.slice(0, reached)) done[st.id] = true;
           const step = location.hash === "#check" || !hadSaved || idx(auto) > idx(s.step) ? auto : s.step;
           return { ...s, done, instanceUrl: location.origin, step };
         });
@@ -124,7 +128,7 @@ export function SetupPage(props: { params?: Record<string, string>; standalone?:
               </strong>{" "}
               단계 · {current.group}
             </span>
-            <span class="muted">{remaining > 0 ? `남은 시간 약 ${remaining}분` : "거의 다 왔어요"}</span>
+            <span class="muted">{doneCount === STEPS.length ? "모두 끝났어요" : remaining > 0 ? `남은 시간 약 ${remaining}분` : "거의 다 왔어요"}</span>
           </div>
           <div class="su-bar" role="progressbar" aria-label="설치 진행" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
             <div class="su-bar-fill" style={{ width: `${pct}%` }} />

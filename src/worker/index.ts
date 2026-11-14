@@ -13,6 +13,18 @@ export { Board } from "./board";
 
 const app = new Hono<{ Bindings: Env }>();
 
+// 모든 Worker 응답(API·오류 안내 페이지)에 기본 보안 헤더. 정적 화면의 헤더는 web/public/_headers.
+app.use("*", async (c, next) => {
+  await next();
+  if (c.res.status === 101) return; // 웹소켓 연결
+  try {
+    c.res.headers.set("x-content-type-options", "nosniff");
+    if (!c.res.headers.has("referrer-policy")) c.res.headers.set("referrer-policy", "strict-origin-when-cross-origin");
+  } catch {
+    // 다른 곳에서 받은 응답(헤더 변경 불가)은 그대로
+  }
+});
+
 // 각 태스크는 자기 라우터를 여기 한 줄로 붙인다 (예: app.route("/", boardRoutes)).
 app.route("/", authRoutes);
 app.route("/", driveRoutes);

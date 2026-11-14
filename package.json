@@ -9,6 +9,9 @@
     "build": "vite build --config web/vite.config.ts && wrangler deploy --dry-run --outdir dist/worker",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit && tsc -p test/tsconfig.json --noEmit",
     "test": "vitest run",
+    "e2e:serve": "node test/e2e/run.mjs --serve",
+    "e2e": "node test/e2e/run.mjs scenario",
+    "e2e:load": "node test/e2e/run.mjs load",
     "deploy": "vite build --config web/vite.config.ts && wrangler deploy",
     "build:guide": "vite build --config web/setup/vite.guide.config.ts"
   },

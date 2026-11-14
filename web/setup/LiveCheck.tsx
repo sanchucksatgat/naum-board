@@ -28,7 +28,8 @@ function HelpLink(props: { id: string; children: ComponentChildren }) {
 }
 
 /** 설치된 나눔보드 안에서만 쓰는 실시간 점검 목록 (/api/me + Drive 확인) */
-export function LiveCheck(props: { ctx: HelpCtx }) {
+/** onResult: 점검이 끝날 때마다 모두 통과했는지 알려 준다 (진행 막대의 마지막 단계 완료 표시용) */
+export function LiveCheck(props: { ctx: HelpCtx; onResult?: (allOk: boolean) => void }) {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [drive, setDrive] = useState<SetupDriveCheck | null>(null);
   const [error, setError] = useState(false);
@@ -169,6 +170,9 @@ export function LiveCheck(props: { ctx: HelpCtx }) {
   }
 
   const allOk = me !== null && items.length > 0 && items.every((i) => i.status === "ok");
+  useEffect(() => {
+    if (!loading && me) props.onResult?.(allOk);
+  }, [loading, allOk]);
   const icon: Record<Status, string> = { ok: "✓", bad: "!", wait: "…", todo: "·" };
   const statusText: Record<Status, string> = { ok: "완료", bad: "확인 필요", wait: "확인 중", todo: "아직" };
 

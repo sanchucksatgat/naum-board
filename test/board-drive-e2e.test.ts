@@ -117,6 +117,32 @@ describe("첨부 업로드 → 실시간 카드 → 파일 보기 → 백업", (
     expect(folder.name).toBe(`새 이름 (${board.code})`);
   });
 
+  it("대시보드 최근 글에 첫 사진과 그 보드의 파일 보기 토큰이 온다 (사진 미리보기)", async () => {
+    const board = await makeBoard(t, { title: "사진 보드", entryMode: "free" });
+    const tok = await freeJoin(board.code, "토끼");
+    const a = await connect(board.code, { token: tok });
+    const bytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    const done = await upload(board.code, tok, bytes);
+    const ack = await a.ok({ t: "post.save", post: { title: "사진", attachments: [{ uploadToken: done.token }] } });
+    await a.ok({ t: "post.save", post: { title: "글만" } });
+    await runDurableObjectAlarm(teacherStub(board.id));
+    const recent = await t.json<import("../src/shared/protocol").RecentPostsResponse>("GET", "/api/teacher/recent-posts?limit=5");
+    const withImg = recent.posts.find((p) => p.postId === ack.result.postId)!;
+    const textOnly = recent.posts.find((p) => p.title === "글만")!;
+    expect(withImg.hasImage).toBe(true);
+    expect(withImg.image).toMatchObject({ width: 40, height: 30 });
+    expect(withImg.fileToken).toBeTruthy();
+    expect(textOnly.image).toBeUndefined();
+    expect(textOnly.fileToken).toBeUndefined();
+    expect(JSON.stringify(recent)).not.toContain(done.file.driveFileId);
+    const res = await call(`/api/files/${board.id}/${withImg.image!.id}?t=${encodeURIComponent(withImg.fileToken!)}`);
+    expect(res.status).toBe(200);
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+    // 토큰은 그 보드에만
+    const other = await makeBoard(t, { title: "다른", entryMode: "free" });
+    expect((await call(`/api/files/${other.id}/${withImg.image!.id}?t=${encodeURIComponent(withImg.fileToken!)}`)).status).toBe(403);
+  });
+
   it("잠긴 보드에는 학생이 업로드 세션을 만들 수 없다 (getUploadPolicy)", async () => {
     const board = await makeBoard(t, { title: "잠김", entryMode: "free", locked: true });
     const tok = await freeJoin(board.code, "토끼");

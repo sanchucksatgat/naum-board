@@ -12,10 +12,12 @@ type C = Context<{ Bindings: Env }>;
 function sameOrigin(c: C): void {
   const o = c.req.header("origin");
   if (!o) return;
-  const host = new URL(c.req.url).host;
+  const self = new URL(c.req.url);
+  const local = (h: string) => h === "localhost" || h === "127.0.0.1";
   try {
     const ou = new URL(o);
-    if (ou.host === host || ou.hostname === "localhost" || ou.hostname === "127.0.0.1") return;
+    // 같은 출처만. 개발 중(localhost 서버)에만 localhost 의 다른 포트(vite 개발 서버)를 허용한다.
+    if (ou.host === self.host || (local(self.hostname) && local(ou.hostname))) return;
   } catch {
     /* 아래 */
   }

@@ -1,9 +1,10 @@
 {
-  // 브라우저 시험 전용 설정. 배포에 쓰지 않는다 (루트 wrangler.jsonc 가 배포용).
-  // 실행: npx vite build --config web/vite.config.ts && npx wrangler dev -c test/e2e/wrangler.e2e.jsonc --port 8790 --persist-to <임시 폴더>
+  // 브라우저·부하 시험 전용 설정. 배포에 쓰지 않는다 (루트 wrangler.jsonc 가 배포용).
+  // 실행: npm run e2e:serve (빌드 + 깨끗한 상태로 wrangler dev, http://localhost:8791)
+  //       npm run e2e        (위 서버를 띄우고 브라우저 시나리오를 돌린 뒤 끈다)
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "nanumboard-e2e",
-  "main": "./dev-worker.ts",
+  "main": "./worker.ts",
   "compatibility_date": "2026-11-01",
   "assets": {
     "directory": "../../dist/web",
@@ -18,6 +19,7 @@
     ]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Registry", "Board"] }],
+  // 가짜 값 (가짜 Google 이 받는다). 실제 값은 넣지 않는다.
   "vars": {
     "GOOGLE_CLIENT_ID": "e2e-test.apps.googleusercontent.com",
     "GOOGLE_CLIENT_SECRET": "e2e-test-secret"

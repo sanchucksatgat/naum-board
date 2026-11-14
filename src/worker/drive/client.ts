@@ -59,6 +59,8 @@ async function readGoogleError(res: Response): Promise<{ reason?: string; status
   }
 }
 
+/** Google 이 "이 프로젝트에서 Drive API 를 켜지 않았다"고 할 때 주는 reason */
+export const API_DISABLED_REASONS = new Set(["accessNotConfigured", "SERVICE_DISABLED"]);
 const RATE_REASONS = new Set(["rateLimitExceeded", "userRateLimitExceeded", "backendError", "sharingRateLimitExceeded"]);
 const QUOTA_REASONS = new Set(["storageQuotaExceeded", "quotaExceeded", "teamDriveFileLimitExceeded", "numChildrenInNonRootLimitExceeded"]);
 
@@ -72,6 +74,8 @@ export async function classifyDriveFailure(res: Response): Promise<{ error: Driv
   if (res.status === 403) {
     if (reason && QUOTA_REASONS.has(reason)) return { error: mk("storage_full"), retryable: false };
     if (reason && RATE_REASONS.has(reason)) return { error: mk("rate_limited"), retryable: true };
+    // 교사의 Google Cloud 프로젝트에서 Drive API 를 켜지 않음 (토큰은 발급되지만 모든 Drive 호출이 403)
+    if (reason && API_DISABLED_REASONS.has(reason)) return { error: mk("api_disabled"), retryable: false };
     // drive.file 권한을 빼고 로그인한 경우
     if (status === "PERMISSION_DENIED" && reason === "insufficientPermissions") return { error: mk("reconnect"), retryable: false };
     if (reason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT" || status === "ACCESS_TOKEN_SCOPE_INSUFFICIENT") return { error: mk("reconnect"), retryable: false };
