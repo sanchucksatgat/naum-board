@@ -1,0 +1,44 @@
+{
+  "name": "nanumboard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --config web/vite.config.ts && wrangler dev",
+    "dev:web": "vite --config web/vite.config.ts",
+    "build": "vite build --config web/vite.config.ts && wrangler deploy --dry-run --outdir dist/worker",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit && tsc -p test/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "deploy": "vite build --config web/vite.config.ts && wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.13.18",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.8.2",
+    "@cloudflare/workers-types": "^5.20261114.1",
+    "@preact/preset-vite": "^2.10.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.8",
+    "vitest": "^4.1.12",
+    "wrangler": "^4.162.0"
+  },
+  "description": "나눔보드: 수업용 실시간 게시 보드 (교사 자가설치형 Cloudflare Worker)",
+  "cloudflare": {
+    "bindings": {
+      "GOOGLE_CLIENT_ID": {
+        "description": "Google Cloud 콘솔에서 만든 **OAuth 클라이언트 ID** (웹 애플리케이션). 끝이 `.apps.googleusercontent.com` 입니다."
+      },
+      "GOOGLE_CLIENT_SECRET": {
+        "description": "위 OAuth 클라이언트의 **클라이언트 보안 비밀번호**."
+      },
+      "SESSION_SECRET": {
+        "description": "선택. 비워 두면 자동으로 만들어집니다. 직접 정하려면 32자 이상 무작위 문자열."
+      },
+      "OWNER_EMAIL": {
+        "description": "선택. 이 Google 계정만 선생님(소유자)으로 로그인할 수 있게 합니다."
+      }
+    }
+  }
+}

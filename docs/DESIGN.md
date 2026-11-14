@@ -116,3 +116,34 @@ Board DO (SQLite):
 - 자기 태스크 디렉터리 밖의 파일을 고쳐야 하면 최소한으로, 보고서에 명시.
 - git commit/push 하지 않는다(지휘관이 한다). 시크릿·개인 이메일을 코드나 문서에 넣지 않는다.
 - 끝낼 때: `npm run typecheck`와 `npm test` 통과 결과를 실제 출력과 함께 보고. 확인하지 못한 것은 "미확인"으로 구분해 적는다.
+
+## 10. 태스크 2 ↔ 3 경계 계약 (병렬 작업용)
+
+PIN 저장 변경: 무료 요금제 CPU 한도(요청당 10ms) 때문에 PBKDF2 대신 `HMAC-SHA256(서버 비밀키, 학생별 salt + PIN)`을 쓴다. 4자리 PIN의 안전은 해시 강도가 아니라 시도 횟수 제한이 책임진다.
+
+### 태스크 2가 제공 (src/worker/board, src/worker/registry)
+- `authenticateBoardActor(request, env, code): Promise<BoardActor | null>` (`src/worker/board/actor.ts`)
+  `BoardActor = { role: "teacher" | "student"; ref: string; name: string; boardId: string; code: string }`
+- Registry RPC: `resolveBoardByCode(code): { id, code, title, archived } | null`
+- Board DO RPC:
+  - `getUploadPolicy(actor: BoardActor): { ok: true; maxBytes: number } | { ok: false; reason: string }` — 잠금·보관·권한 확인
+  - `getAttachment(attachmentId): { driveFileId, name, mime, size, kind } | null`
+  - `getDriveState(): { folderId?: string; attachFolderId?: string; backupFileId?: string; title: string; code: string }`
+  - `setDriveState(patch): void`
+  - `exportRows(): { header: string[]; rows: string[][] }` — 시트 내보내기용
+- 첨부 등록: 클라이언트가 `post.save` 메시지에 태스크 3이 발급한 **업로드 확인 토큰**(purpose `"upload"`, payload `UploadedFile`)을 넣어 보낸다. Board DO는 `verifyToken`으로 검증하고 boardId·actor ref 일치를 확인한 뒤 attachments에 저장한다.
+  `UploadedFile = { boardId, by: string /*actor ref*/, driveFileId, name, mime, size, kind: "image" | "file", width?, height? }` — `src/shared/files.ts`에 정의(태스크 3이 파일 생성, 태스크 2는 import).
+- snapshot에 **파일 보기 토큰**(purpose `"file"`, payload `{ boardId }`, 12시간)을 actor마다 하나 넣어 준다.
+- 백업: 변경 30초 뒤 알람에서 `writeBoardBackup` 호출. 실패 시 재시도(지수 백오프)하고 상태를 교사 snapshot에 노출.
+
+### 태스크 3이 제공 (src/worker/drive, export는 `src/worker/drive/index.ts`)
+- `ensureBoardFolders(env, boardId): Promise<{ folderId: string; attachFolderId: string }>` — Board의 get/setDriveState 사용, 없으면 Drive에 생성
+- `writeBoardBackup(env, boardId, content: object): Promise<void>` — `게시글 백업.json` 생성/갱신
+- `renameBoardFolder(env, boardId, title): Promise<void>`
+- 라우트(태스크 3 소유):
+  - `POST /api/boards/:code/uploads` → `{ uploadUrl, method, headers, uploadId }` (직접 PUT 또는 프록시 주소)
+  - `POST /api/boards/:code/uploads/:uploadId/complete` → `{ token /*업로드 확인 토큰*/, file: UploadedFile }`
+  - `GET /api/files/:boardId/:attachmentId?t=` — 파일 보기 토큰 검증 → 캐시 → `Board.getAttachment` → Drive
+  - `POST /api/boards/:code/export` (교사) → `{ url }` 구글 시트 링크
+  - `GET /api/boards/:code/drive` (교사) → `{ folderUrl, backup: { status, lastAt } }`
+- 병렬 작업 중 상대 구현이 아직 없으면 위 시그니처대로 임시 구현/모의 객체로 테스트하고, 통합은 지휘관이 맞춘다.

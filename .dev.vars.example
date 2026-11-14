@@ -1,0 +1,7 @@
+# 로컬 개발(wrangler dev)용 예시. .dev.vars 로 복사해서 값을 채우세요. .dev.vars 는 커밋하지 않습니다.
+# (Deploy to Cloudflare 버튼은 이 파일에 적힌 이름을 시크릿 입력 칸으로 보여줍니다.)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+# 선택 항목 (필요할 때만 주석을 풀어 쓰세요)
+# SESSION_SECRET=  비워 두면 처음 실행할 때 Registry가 만들어 보관합니다. 쓴다면 32자 이상.
+# OWNER_EMAIL=     이 Google 계정만 소유자가 될 수 있습니다.

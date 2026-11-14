@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // 나눔보드: 교사 한 명이 자기 Cloudflare 계정에 한 벌 설치하는 Worker.
+  "name": "nanumboard",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+
+  // 정적 프런트(Vite 빌드 결과)를 같은 Worker가 서빙한다.
+  // /api/*, /auth/* 만 Worker 코드가 먼저 처리하고, 나머지는 정적 자산(없으면 index.html).
+  "assets": {
+    "directory": "./dist/web",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/auth/*"]
+  },
+
+  // SQLite 기반 Durable Object (Workers 무료 요금제에서 사용 가능한 유일한 DO 저장소 방식).
+  "durable_objects": {
+    "bindings": [
+      { "name": "REGISTRY", "class_name": "Registry" },
+      { "name": "BOARD", "class_name": "Board" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Registry", "Board"] }
+  ],
+
+  // 대시보드에서 넣은 변수(GOOGLE_CLIENT_ID, OWNER_EMAIL)를 다시 배포할 때 지우지 않는다.
+  "keep_vars": true,
+
+  "observability": { "enabled": true }
+}
