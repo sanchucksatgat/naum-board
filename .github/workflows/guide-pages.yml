@@ -4,7 +4,7 @@ name: 설치 안내 페이지 게시
 
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/**"]
     paths: ["web/setup/**", "web/ui/tokens.css", "web/lib/api.ts", "src/shared/api.ts", ".github/workflows/guide-pages.yml"]
   workflow_dispatch:
 

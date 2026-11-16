@@ -9,7 +9,7 @@
 
 ## 설치하기
 
-**[친절한 설치 안내 보기](https://sanchucksatgat.github.io/-/)** — 한 단계씩 따라 하면 돼요. (약 40분, 컴퓨터 권장)
+**[친절한 설치 안내 보기](https://sanchucksatgat.github.io/nanumboard/)** — 한 단계씩 따라 하면 돼요. (약 40분, 컴퓨터 권장)
 
 1. GitHub, Cloudflare 무료 가입
 2. 아래 버튼으로 설치 → 내 나눔보드 주소(`https://nanumboard.○○.workers.dev`)가 생겨요
@@ -17,7 +17,7 @@
 4. Cloudflare의 Worker 설정 → 변수 및 비밀에 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` 넣기
 5. 내 나눔보드에 Google로 처음 로그인 → **그 계정이 주인**이 돼요. 이어서 `내 주소/setup` 의 **설치 점검**이 모두 초록색인지 확인!
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/sanchucksatgat/-)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/sanchucksatgat/nanumboard)
 
 > 설치 버튼 화면에서는 Google 값을 묻지 않아요. 설치가 끝난 다음 안내에 따라 넣으면 돼요.
 >
