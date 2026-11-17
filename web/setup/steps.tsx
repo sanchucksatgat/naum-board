@@ -605,7 +605,10 @@ function KeysStep(p: StepProps) {
           <Ext href={LINKS.cloudflareWorkers}>Cloudflare 대시보드</Ext> → <UI ko="Workers 및 Pages" en="Workers & Pages" /> → <code>{name}</code>를 눌러요.
         </li>
         <li>
-          <UI ko="설정" en="Settings" /> 탭 → <UI ko="변수 및 비밀" en="Variables and Secrets" /> 옆 <UI ko="추가" en="Add" />를 눌러요.
+          <UI ko="설정" en="Settings" /> 탭 → 화면 <strong>맨 위쪽</strong>에 있는 <UI ko="변수 및 비밀" en="Variables and Secrets" /> 옆 <UI ko="추가" en="Add" />를 눌러요.
+          <br />
+          <strong>주의:</strong> 같은 이름의 칸이 아래쪽 <UI ko="빌드" en="Builds" /> 안에도 하나 더 있어요. 그곳에 넣으면 나눔보드가 읽지 못하고 <UI ko="배포" en="Deploy" /> 버튼도
+          나오지 않아요. 꼭 맨 위의 것에 넣어 주세요.
         </li>
         <li>
           아래 표대로 하나씩 넣어요. <UI ko="유형" en="Type" />은 모두 <UI ko="비밀" en="Secret" />로 골라요. 두 번째부터는 <UI ko="변수 추가" en="Add variable" />를 눌러 줄을
