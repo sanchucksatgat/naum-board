@@ -4,7 +4,7 @@
  *
  * ⚠️ 이 저장소는 반드시 **공개(public)** 여야 설치 버튼이 동작한다.
  */
-export const SOURCE_REPO_URL = "https://github.com/sanchucksatgat/nanumboard";
+export const SOURCE_REPO_URL = "https://github.com/sanchucksatgat/naum-board";
 
 /** Cloudflare 설치 버튼이 여는 주소 */
 export const DEPLOY_URL = `https://deploy.workers.cloudflare.com/?url=${SOURCE_REPO_URL}`;
