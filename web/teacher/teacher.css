@@ -170,9 +170,9 @@ a.btn { text-decoration: none; }
 .t-share { display: grid; gap: var(--sp-5); grid-template-columns: minmax(200px, 280px) 1fr; align-items: start; }
 .t-share-qr { background: #fff; padding: var(--sp-2); border-radius: var(--r-m); border: 1px solid var(--c-line); }
 .t-share-title { margin: 0; font-weight: 600; }
-.t-code-big { margin: 0; font-size: 44px; font-weight: 800; letter-spacing: .08em; line-height: 1.1; color: var(--c-primary-strong); font-variant-numeric: tabular-nums; }
+.t-code-big { margin: 0; font-size: 56px; font-weight: 800; letter-spacing: .08em; line-height: 1.1; color: var(--c-primary-strong); font-variant-numeric: tabular-nums; }
 .t-share .label { margin: 0; }
-@media (max-width: 600px) { .t-share { grid-template-columns: 1fr; } .t-share-qr { width: min(260px, 100%); margin: 0 auto; } .t-code-big { font-size: 38px; text-align: center; } }
+@media (max-width: 600px) { .t-share { grid-template-columns: 1fr; } .t-share-qr { width: min(260px, 100%); margin: 0 auto; } .t-code-big { font-size: 48px; text-align: center; } }
 
 .t-projector { position: fixed; inset: 0; z-index: 400; background: var(--c-bg); display: flex; flex-direction: column; align-items: center; justify-content: safe center; gap: min(3vh, 32px); padding: 64px var(--sp-5) var(--sp-5); overflow: auto; }
 .t-projector-bar { position: absolute; top: var(--sp-3); right: var(--sp-3); display: flex; gap: var(--sp-2); }
@@ -183,7 +183,8 @@ a.btn { text-decoration: none; }
 .t-projector-info p { margin: 0; }
 .t-projector-step { font-size: min(2.2vw, 3.6vh); color: var(--c-text-2); }
 .t-projector-url { font-size: min(3.4vw, 5.5vh); font-weight: 700; overflow-wrap: anywhere; }
-.t-projector-code { font-size: min(8vw, 15vh); font-weight: 900; letter-spacing: .06em; line-height: 1.05; color: var(--c-primary-strong); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.t-projector-code { font-size: min(10vw, 18vh); font-weight: 900; letter-spacing: .06em; line-height: 1.05; color: var(--c-primary-strong); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.t-projector-code.is-long { font-size: min(8vw, 15vh); }
 @media (max-aspect-ratio: 1/1) {
   .t-projector-body { grid-template-columns: 1fr; justify-items: center; gap: 3vh; }
   .t-projector-qr { width: min(78vw, 45vh); }
@@ -191,6 +192,7 @@ a.btn { text-decoration: none; }
   .t-projector-step { font-size: min(4.5vw, 2.6vh); }
   .t-projector-url { font-size: min(6vw, 3.4vh); }
   .t-projector-code { font-size: min(15vw, 9vh); }
+  .t-projector-code.is-long { font-size: min(12vw, 7vh); }
 }
 
 /* 표 */
@@ -247,6 +249,7 @@ a.btn { text-decoration: none; }
 .t-slip-board { font-size: clamp(8px, 5cqi, 12px); color: var(--c-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .t-slip-name { font-size: clamp(10px, 7cqi, 18px); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .t-slip-pin { font-size: clamp(16px, 16cqi, 40px); font-weight: 800; letter-spacing: .2em; font-variant-numeric: tabular-nums; }
+.t-slip-pin-label { font-size: clamp(8px, 5cqi, 13px); font-weight: 700; letter-spacing: 0; color: var(--c-text-2); margin-right: .5em; vertical-align: middle; }
 .t-slip-pin.is-registered { font-size: clamp(10px, 7cqi, 16px); letter-spacing: 0; color: var(--c-text-2); }
 .t-slip-help { font-size: clamp(7px, 4.2cqi, 11px); color: var(--c-text-2); overflow-wrap: anywhere; }
 @media (max-width: 640px) {
@@ -285,5 +288,5 @@ a.btn { text-decoration: none; }
   .t-projector-qr { width: 120mm; }
   .t-projector-step { font-size: 6mm; }
   .t-projector-url { font-size: 8mm; }
-  .t-projector-code { font-size: 26mm; }
+  .t-projector-code, .t-projector-code.is-long { font-size: 26mm; }
 }

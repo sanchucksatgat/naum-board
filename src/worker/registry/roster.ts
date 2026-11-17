@@ -47,6 +47,11 @@ export const PIN_LOCK_MS = 5 * 60_000;
 /** IP 당 1분 동안 허용하는 실패 수 (학교는 NAT 로 한 IP 를 공유하므로 실패만 센다) */
 export const IP_FAILURE_LIMIT = 30;
 export const IP_WINDOW_MS = 60_000;
+/**
+ * 없는 입장코드 조회: IP 당 1분에 이만큼 틀리면 그 1분이 끝날 때까지 코드 조회를 막는다.
+ * 있는 코드 조회는 세지 않으므로, 한 반 전체가 한 IP(NAT)로 같은 코드를 열어도 막히지 않는다.
+ */
+export const CODE_MISS_LIMIT = 60;
 
 export function toTeacherStudent(r: StudentRow, now = Date.now()): TeacherStudent {
   return {
@@ -180,15 +185,14 @@ export function pinMatches(row: StudentRow, pin: string, hashed: string | null):
   return row.initial_pin !== null && timingSafeEqualStr(row.initial_pin, pin);
 }
 
-/** IP 실패 기록이 한도를 넘었으면 남은 시간(ms), 아니면 0 */
-export function ipBlockedFor(sql: SqlStorage, ip: string, now: number): number {
-  const r = sql.exec<{ window_start: number; count: number }>("SELECT window_start, count FROM login_throttle WHERE key = ?", "ip:" + ip).toArray()[0];
+/** login_throttle 의 key 기록이 1분 안에 limit 에 닿았으면 남은 시간(ms), 아니면 0 */
+function throttleWait(sql: SqlStorage, key: string, limit: number, now: number): number {
+  const r = sql.exec<{ window_start: number; count: number }>("SELECT window_start, count FROM login_throttle WHERE key = ?", key).toArray()[0];
   if (!r || now - r.window_start >= IP_WINDOW_MS) return 0;
-  return r.count >= IP_FAILURE_LIMIT ? r.window_start + IP_WINDOW_MS - now : 0;
+  return r.count >= limit ? r.window_start + IP_WINDOW_MS - now : 0;
 }
 
-export function recordIpFailure(sql: SqlStorage, ip: string, now: number): void {
-  const key = "ip:" + ip;
+function throttleHit(sql: SqlStorage, key: string, now: number): void {
   const r = sql.exec<{ window_start: number }>("SELECT window_start FROM login_throttle WHERE key = ?", key).toArray()[0];
   if (!r || now - r.window_start >= IP_WINDOW_MS) {
     sql.exec("INSERT OR REPLACE INTO login_throttle (key, window_start, count) VALUES (?, ?, 1)", key, now);
@@ -197,6 +201,24 @@ export function recordIpFailure(sql: SqlStorage, ip: string, now: number): void 
   } else {
     sql.exec("UPDATE login_throttle SET count = count + 1 WHERE key = ?", key);
   }
+}
+
+/** IP 실패 기록(학번·PIN)이 한도를 넘었으면 남은 시간(ms), 아니면 0 */
+export function ipBlockedFor(sql: SqlStorage, ip: string, now: number): number {
+  return throttleWait(sql, "ip:" + ip, IP_FAILURE_LIMIT, now);
+}
+
+export function recordIpFailure(sql: SqlStorage, ip: string, now: number): void {
+  throttleHit(sql, "ip:" + ip, now);
+}
+
+/** 없는 입장코드 조회가 한도를 넘었으면 남은 시간(ms), 아니면 0 */
+export function codeMissBlockedFor(sql: SqlStorage, ip: string, now: number): number {
+  return throttleWait(sql, "code:" + ip, CODE_MISS_LIMIT, now);
+}
+
+export function recordCodeMiss(sql: SqlStorage, ip: string, now: number): void {
+  throttleHit(sql, "code:" + ip, now);
 }
 
 /** 학번별 실패 기록. 5회째에 5분 잠금 (실패 횟수는 0으로) */

@@ -160,6 +160,7 @@ describe("format", () => {
     expect(matchesBoard({ title: "a", code: "K7QX2M", className: null }, "k7q")).toBe(true);
     expect(matchesBoard({ title: "a", code: "K7QX2M", className: "3학년 2반" }, "2반")).toBe(true);
     expect(matchesBoard({ title: "a", code: "K7QX2M", className: null }, "zz")).toBe(false);
+    expect(matchesBoard({ title: "a", code: "0482", className: null }, "048")).toBe(true);
     const sorted = sortBoards([
       { id: "old", lastPostAt: null, updatedAt: 1, createdAt: 1 },
       { id: "new", lastPostAt: 50, updatedAt: 2, createdAt: 2 },
@@ -175,6 +176,8 @@ describe("format", () => {
     expect(backupText({ state: "ok", lastSuccessAt: now - 60_000, lastAttemptAt: now, failures: 0, lastError: null, nextAttemptAt: null }, now).text).toContain("1분 전");
     expect(studentUrl("https://a.example/", "K7QX2M")).toBe("https://a.example/b/K7QX2M");
     expect(spacedCode("K7QX2M")).toBe("K7Q X2M");
+    expect(spacedCode("4821")).toBe("4821");
+    expect(spacedCode("0482")).toBe("0482");
   });
 });
 

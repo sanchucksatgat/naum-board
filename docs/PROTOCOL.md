@@ -31,6 +31,8 @@
 
 시도 제한: 학번별 5회 실패 → 5분 잠금(`student_locked`, 맞는 PIN 도 거부). IP 당 1분에 실패 30회 → `too_many_attempts`
 (학교는 NAT 로 IP 를 공유하므로 **실패만** 센다). 둘 다 429 + `retryAfterMs` + `Retry-After` 헤더.
+없는 입장코드 조회(`GET /api/boards/:code`, `login`, `join`)는 따로 센다: IP 당 1분에 60번 → 그 1분이 끝날 때까지 그 IP 의 코드 조회가 모두
+429 `too_many_attempts` ("입장코드를 너무 많이 틀렸어요. 1분 뒤에 다시 해 주세요."). 있는 코드 조회는 세지 않는다.
 교사가 PIN 을 초기화하면 새 초기 PIN 이 생기고 PIN 버전이 올라가 **기존 토큰·연결이 모두 무효**(연결은 4001 로 끊김).
 
 ### 1.2 자유 입장
@@ -124,7 +126,7 @@
 
 ```jsonc
 {
-  "board": { "id": "b…", "code": "K7QX2M" },
+  "board": { "id": "b…", "code": "4821" },
   "settings": { "title": "…", "type": "single", "columnMode": "student", "entryMode": "roster",
                 "moderation": false, "locked": false, "anonymous": false,
                 "allowComments": true, "allowLikes": true, "maxFileMB": 25, "archived": false },
@@ -194,7 +196,7 @@ WS `error.code` 와 REST `{ error: { code, message, retryAfterMs? } }` 가 같�
 | `invalid_settings` | 지금 상태와 안 맞는 설정 |
 | `empty_post` | 제목·내용·링크·첨부 모두 없음 |
 | `invalid_credentials` | 학번 또는 PIN 틀림 (어느 쪽인지 알려 주지 않음) |
-| `student_locked` / `too_many_attempts` | PIN 잠금 / IP 시도 제한 (`retryAfterMs`) |
+| `student_locked` / `too_many_attempts` | PIN 잠금 / IP 시도 제한·없는 입장코드 너무 많이 (`retryAfterMs`) |
 | `invalid_pin` | 새 PIN 규칙 위반 |
 | `wrong_entry_mode` | 명단 보드에 자유 입장 등 |
 | `duplicate` | 학번 중복 |
@@ -229,10 +231,13 @@ WS `error.code` 와 REST `{ error: { code, message, retryAfterMs? } }` 가 같�
 | `GET /api/boards/:code/me` | Bearer | → `{ student }` 또는 401/403 (토큰 상태 확인용) |
 | `GET /api/boards/:code/ws` | `?st=` 또는 교사 쿠키 | 웹소켓 |
 
-`code` 는 대소문자·공백·하이픈 무시. 쓰기 요청은 다른 사이트 `Origin` 이면 403.
+`code` 는 새 보드면 숫자 4자리(설치 안이 붐비면 5·6자리, 앞자리 0 그대로), 예전 보드면 영숫자 6자(`[A-HJKMNP-Z2-9]`, 예: `K7QX2M`).
+대소문자·공백·하이픈·전각 글자 무시. 모양이 틀리거나 없는 코드는 똑같이 `404 {"error":{"code":"not_found","message":"입장코드를 다시 확인해 주세요."}}`.
+다른 보드 학생 토큰으로 없는 코드를 물으면 다른 보드와 똑같이 401 (코드가 있는지 알려 주지 않음).
+쓰기 요청은 다른 사이트 `Origin` 이면 403.
 
 ```http
-POST /api/boards/K7QX2M/login
+POST /api/boards/4821/login
 {"number":"20301","pin":"4821"}
 → 200 {"status":"pin_setup","setupToken":"eyJ…","student":{"ref":"s:Ab12…","name":"김하나","realName":"김하나","number":"20301","nickname":""}}
 → 401 {"error":{"code":"invalid_credentials","message":"학번 또는 PIN을 다시 확인해 주세요."}}

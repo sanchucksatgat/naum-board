@@ -31,7 +31,7 @@ describe("교사 관리 REST", () => {
     expect(cls.studentCount).toBe(3);
     expect(students.map((s) => s.number)).toEqual(["20301", "20302", "20303"]);
     expect(students[0]).toMatchObject({ name: "김하나", pinRegistered: false, initialPin: "1357", group: "1모둠" });
-    expect(board.code).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+    expect(board.code).toMatch(/^[0-9]{4}$/);
     expect(board).toMatchObject({ title: "과학 관찰", classId: cls.id, className: "3학년 1반", archived: false });
     expect(board.settings).toMatchObject({ type: "cumulative", columnMode: "student", entryMode: "roster", anonymous: false });
 

@@ -1,6 +1,6 @@
 /** 보드 목록 SQL (Registry DO 안에서만 호출). 태스크2. */
 import {
-  BOARD_CODE_ALPHABET, BOARD_CODE_LENGTH, LIMITS,
+  BOARD_CODE_DIGITS, BOARD_CODE_MAX_DIGITS, LIMITS,
   type BoardSummary, type BoardType, type ColumnMode, type EntryMode, type RecentPost,
 } from "../../shared/protocol";
 import { randomToken } from "../auth/token";
@@ -78,16 +78,41 @@ export function toRecord(r: BoardRow): BoardRecord {
   };
 }
 
-export function randomBoardCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(BOARD_CODE_LENGTH * 2));
+/** 숫자 n자리 (crypto 난수, 250 이상은 버려서 치우침 없게). 앞자리 0도 그대로 */
+export function randomNumericCode(n: number): string {
   let out = "";
-  // 31글자 알파벳: 248 이상은 버려서 치우침 없게
-  for (const b of bytes) {
-    if (b >= 248) continue;
-    out += BOARD_CODE_ALPHABET[b % BOARD_CODE_ALPHABET.length];
-    if (out.length === BOARD_CODE_LENGTH) return out;
+  while (out.length < n) {
+    for (const b of crypto.getRandomValues(new Uint8Array(n * 2))) {
+      if (b >= 250) continue;
+      out += String(b % 10);
+      if (out.length === n) break;
+    }
   }
-  return randomBoardCode();
+  return out;
+}
+
+/** 너무 쉽게 짐작되는 코드: 같은 숫자 반복(1111), 1씩 오르내림(1234, 4321, 7890), 두 숫자 번갈아(1212) */
+export function isGuessableCode(code: string): boolean {
+  const d = [...code].map(Number);
+  const same = d.every((x) => x === d[0]);
+  const step = (k: number) => d.every((x, i) => i === 0 || x === (d[i - 1]! + k + 10) % 10);
+  const alternating = d.every((x, i) => x === d[i % 2]);
+  return same || step(1) || step(-1) || alternating;
+}
+
+/** 한 자리 수에서 이만큼 겹치면(설치 안에 보드가 아주 많으면) 한 자리 늘린다 */
+export const CODE_TRIES_PER_LENGTH = 12;
+
+/** 새 입장코드 고르기: 4자리 → (붐비면) 5자리 → 6자리. 다 실패하면 null */
+export function pickBoardCode(isTaken: (code: string) => boolean): string | null {
+  for (let n = BOARD_CODE_DIGITS; n <= BOARD_CODE_MAX_DIGITS; n++) {
+    for (let i = 0; i < CODE_TRIES_PER_LENGTH; i++) {
+      const code = randomNumericCode(n);
+      if (isGuessableCode(code) || isTaken(code)) continue;
+      return code;
+    }
+  }
+  return null;
 }
 
 export function getBoardRow(sql: SqlStorage, id: string): BoardRow | null {
@@ -112,9 +137,8 @@ export function insertBoard(sql: SqlStorage, input: CreateBoardInput, now: numbe
     fail("not_found", "연결할 반을 찾을 수 없어요.", 404);
   }
   const id = "b" + randomToken(9);
-  for (let i = 0; i < 20; i++) {
-    const code = randomBoardCode();
-    if (getBoardRowByCode(sql, code)) continue;
+  const code = pickBoardCode((c) => getBoardRowByCode(sql, c) !== null);
+  if (code) {
     sql.exec(
       `INSERT INTO boards (id, code, title, type, column_mode, entry_mode, class_id, locked, archived, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,

@@ -58,8 +58,7 @@ function nicknameValue(v: unknown, required: boolean): string {
 
 boardRoutes.get("/api/boards/:code", async (c) => {
   const code = codeParam(c.req.param("code"));
-  const b = await getRegistry(c.env).resolveBoardByCode(code);
-  if (!b) throw new HttpError(404, "not_found", "입장코드를 다시 확인해 주세요.");
+  const b = unwrap(await getRegistry(c.env).lookupBoardByCode(code, clientIp(c.req.raw)));
   const body: BoardPublicInfo = { code: b.code, title: b.title, entryMode: b.entryMode, locked: b.locked, archived: b.archived };
   return c.json(body, 200, noStore);
 });
@@ -106,8 +105,7 @@ boardRoutes.post("/api/boards/:code/join", async (c) => {
   if (typeof device !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(device)) {
     throw new HttpError(400, "bad_request", "기기 정보가 올바르지 않아요. 화면을 새로 고쳐 주세요.");
   }
-  const b = await getRegistry(c.env).resolveBoardByCode(code);
-  if (!b) throw new HttpError(404, "not_found", "입장코드를 다시 확인해 주세요.");
+  const b = unwrap(await getRegistry(c.env).lookupBoardByCode(code, clientIp(c.req.raw)));
   if (b.archived) throw new HttpError(403, "archived", "보관된 보드예요. 선생님께 여쭤 보세요.");
   if (b.entryMode !== "free") throw new HttpError(400, "wrong_entry_mode", "이 보드는 학번과 PIN으로 들어가요.");
   const ref = await freeRef(b.id, device);

@@ -160,7 +160,7 @@ const sig = (v) => JSON.stringify(Object.keys(v).sort().map((k) => [k, v[k]]));
   const cls = await http("/api/teacher/classes", { method: "POST", body: JSON.stringify({ name: "부하 시험 반", students }) }, cookie);
   const board = await http("/api/teacher/boards", { method: "POST", body: JSON.stringify({ title: "부하 시험 보드", classId: cls.body.class.id, entryMode: "roster", columnMode: "student" }) }, cookie);
   const code = board.body.code;
-  ok("반 50명 + 보드 만들기", cls.status === 201 && board.status === 201, code);
+  ok("반 50명 + 보드 만들기 (입장 코드 숫자 4자리)", cls.status === 201 && board.status === 201 && /^[0-9]{4}$/.test(code), code);
 
   // ── 같은 IP(NAT) 에서 50명이 1분 안에 처음 입장 (PIN 등록), 그중 10명은 한 번씩 틀림 ──
   const t0 = performance.now();

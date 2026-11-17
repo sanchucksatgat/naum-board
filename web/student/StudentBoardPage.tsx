@@ -187,14 +187,14 @@ function NotFound(props: { deleted: boolean; code: string }) {
     <Notice
       icon="🔍"
       title={props.deleted ? "없어진 보드예요" : "보드를 찾을 수 없어요"}
-      text={props.deleted ? "선생님이 이 보드를 지웠어요." : "입장코드를 다시 확인해 주세요. 선생님이 알려 준 6글자를 써요."}
+      text={props.deleted ? "선생님이 이 보드를 지웠어요." : "입장코드를 다시 확인해 주세요. 선생님이 알려 준 숫자 4자리를 써요."}
     >
       <form
         class="row entry-code-form"
         onSubmit={(e) => {
           e.preventDefault();
           const c = normalizeBoardCode(v);
-          if (!isValidBoardCode(c)) return setErr("영어와 숫자 6글자예요.");
+          if (!isValidBoardCode(c)) return setErr("입장코드는 숫자 4자리예요.");
           navigate("/b/" + c);
         }}
       >
@@ -204,10 +204,11 @@ function NotFound(props: { deleted: boolean; code: string }) {
         <input
           id="code-again"
           class="input entry-input"
+          inputMode="numeric"
           autoCapitalize="characters"
           autoComplete="off"
           maxLength={8}
-          placeholder="예: K7QX2M"
+          placeholder="예: 4821"
           value={v}
           onInput={(e) => setV((e.currentTarget as HTMLInputElement).value.toUpperCase())}
         />

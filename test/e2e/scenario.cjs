@@ -193,20 +193,21 @@ const driveFiles = async () => (await (await fetch(`${BASE}/__test/drive`)).json
     await T.waitForSelector(".t-code-big");
     const code = (await T.locator(".t-code-big").textContent()).replace(/\s/g, "");
     const qr = await T.locator("[role=dialog] svg").count();
+    const codePx = await T.locator(".t-code-big").evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     const id = T.url().match(/\/teacher\/boards\/([^/?]+)/)[1];
     boards[key] = { code, id, title: o.title };
-    return { code, qr };
+    return { code, qr, codePx };
   }
   await step("보드 만들기: 개인별·명단·누적", async () => {
     const r = await createBoard("B1", { title: "새싹 관찰 일기", desc: "오늘 본 새싹을 사진과 글로 남겨요.", type: "cumulative", col: "student", entry: "roster", shotForm: "t04-board-form" });
-    ok("보드1 만들고 공유 창에 입장 코드·QR", /^[A-Z2-9]{6}$/.test(r.code) && r.qr > 0, r.code);
+    ok("보드1 만들고 공유 창에 입장 코드(숫자 4자리, 크게)·QR", /^[0-9]{4}$/.test(r.code) && r.codePx >= 48 && r.qr > 0, `${r.code} ${r.codePx}px`);
     await shot(T, "t05-share-qr");
     // QR 이 실제로 이 보드 주소를 담고 있는지: svg 안 path 가 있는지만 (디코딩은 단위 시험 몫)
     await T.keyboard.press("Escape");
   });
   await step("보드 만들기: 모둠별·명단·학생당 1카드", async () => {
     const r = await createBoard("B2", { title: "모둠 토의 결과", type: "single", col: "group", entry: "roster" });
-    ok("보드2 (모둠별·1카드) 만듦", !!r.code, r.code);
+    ok("보드2 (모둠별·1카드) 만듦, 코드는 보드마다 다름", /^[0-9]{4}$/.test(r.code) && r.code !== boards.B1.code, r.code);
     await T.keyboard.press("Escape");
   });
   await step("보드 만들기: 주제별·자유 입장·승인 후 게시", async () => {
@@ -217,6 +218,36 @@ const driveFiles = async () => (await (await fetch(`${BASE}/__test/drive`)).json
     await T.waitForSelector(".t-board");
     ok("대시보드에 보드 3개", (await T.locator(".t-board").count()) === 3);
     await shot(T, "t07-dashboard-boards");
+  });
+  await step("입장 코드 4자리: 프로젝터 화면에 크게", async () => {
+    await T.goto(`${BASE}/teacher/boards/${boards.B1.id}/projector`);
+    await T.waitForSelector(".t-projector-code");
+    const p = await T.locator(".t-projector-code").evaluate((el) => ({
+      text: el.textContent,
+      px: parseFloat(getComputedStyle(el).fontSize),
+      fits: el.getBoundingClientRect().right <= window.innerWidth && el.scrollWidth <= el.clientWidth + 1,
+    }));
+    ok("프로젝터: 숫자 4자리 코드가 크게(100px 이상) 한 줄로", p.text === boards.B1.code && p.px >= 100 && p.fits, `${p.text} ${p.px}px`);
+    await shot(T, "t07b-projector-code");
+    await T.goto(BASE + "/teacher");
+    await T.waitForSelector(".t-board");
+  });
+  await step("학생(휴대폰 360px): 첫 화면에서 숫자 4자리로 입장", async () => {
+    const H = await newPage(phone, "H-phone-home");
+    await H.goto(BASE + "/");
+    const input = H.locator("#h-code-input");
+    ok("첫 화면: 숫자 자판(inputmode=numeric), 예시는 4자리", (await input.getAttribute("inputmode")) === "numeric" && /4821/.test(await input.getAttribute("placeholder")));
+    await input.fill("12");
+    await H.click("button[type=submit]:has-text('입장')");
+    ok("첫 화면: 모양이 틀리면 '숫자 4자리' 안내", /숫자 4자리/.test(await H.textContent("#h-code-error")));
+    await input.fill(boards.B1.code);
+    ok("첫 화면: 가로 스크롤 없음", await noHScroll(H));
+    await shot(H, "s00-phone-home-code");
+    await H.click("button[type=submit]:has-text('입장')");
+    await H.waitForURL(new RegExp(`/b/${boards.B1.code}$`));
+    await H.waitForSelector("#entry-number");
+    ok("첫 화면 → 4자리 코드로 그 보드의 입장 화면", (await H.textContent(".entry-code")) === boards.B1.code);
+    await H.close();
   });
 
   // ═════════ 3. 보드1: 명단 학생 실시간 ═════════
@@ -643,6 +674,47 @@ const driveFiles = async () => (await (await fetch(`${BASE}/__test/drive`)).json
     await T.goto(BASE + "/teacher");
     await T.waitForSelector(".t-board");
     await shot(T, "d06-dashboard-dark");
+    // 휴대폰 세로 화면의 프로젝터 안내도 코드가 잘리지 않게
+    await TP.emulateMedia({ colorScheme: "light" });
+    await TP.goto(`${BASE}/teacher/boards/${boards.B1.id}/projector`);
+    await TP.waitForSelector(".t-projector-code");
+    const p = await TP.locator(".t-projector-code").evaluate((el) => ({ text: el.textContent, px: parseFloat(getComputedStyle(el).fontSize) }));
+    ok("교사(휴대폰): 프로젝터 화면 코드 크게, 가로 스크롤 없음", p.text === boards.B1.code && p.px >= 40 && (await noHScroll(TP)), `${p.px}px`);
+    await shot(TP, "t20-projector-phone");
+  });
+
+  // ═════════ 8. 예전(영숫자 6자) 입장 코드 보드도 그대로 ═════════
+  await step("예전 6자 코드 보드: 첫 화면 입력·입장·대시보드·프로젝터", async () => {
+    await T.emulateMedia({ colorScheme: "light" });
+    await T.goto(BASE + "/teacher");
+    const made = await T.evaluate(async () => {
+      const r = await fetch("/api/teacher/boards", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "예전 코드 보드", entryMode: "free" }) });
+      return r.json();
+    });
+    const set = await fetch(`${BASE}/__test/legacy-code?board=${made.id}&code=K7QX2M`, { method: "POST" });
+    if (!set.ok) throw new Error("legacy-code " + set.status);
+    const L = await newPage(phone, "L-phone-legacy");
+    await L.goto(BASE + "/");
+    await L.click("text=코드에 영어 글자가 있어요");
+    const mode = await L.getAttribute("#h-code-input", "inputmode");
+    await L.fill("#h-code-input", "k7q x2m");
+    await L.click("button[type=submit]:has-text('입장')");
+    await L.waitForURL(/\/b\/K7QX2M$/);
+    await L.fill("#entry-nick", "예전학생");
+    await L.click("button[type=submit]");
+    await L.waitForSelector(".wall", { timeout: 15000 });
+    ok("예전 코드: 글자 자판으로 바꿔 소문자·띄어쓰기로 쳐도 입장", mode === "text", mode);
+    await shot(L, "s13-phone-legacy-code-board");
+    await L.close();
+    await T.goto(BASE + "/teacher");
+    await T.waitForSelector(".t-board");
+    const card = await T.locator(".t-board", { hasText: "예전 코드 보드" }).textContent();
+    ok("예전 코드: 대시보드에 'K7Q X2M' 그대로", card.includes("K7Q X2M"), card.slice(0, 80));
+    await T.goto(`${BASE}/teacher/boards/${made.id}/projector`);
+    await T.waitForSelector(".t-projector-code");
+    const p = await T.locator(".t-projector-code").evaluate((el) => ({ text: el.textContent, fits: el.getBoundingClientRect().right <= window.innerWidth }));
+    ok("예전 코드: 프로젝터에 'K7Q X2M' 가 화면 안에", p.text === "K7Q X2M" && p.fits, JSON.stringify(p));
+    await shot(T, "t21-projector-legacy-code");
   });
 
   ok("페이지 오류·CSP 위반 없음", errors.length === 0, errors.slice(0, 6).join(" | "));

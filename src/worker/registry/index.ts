@@ -9,8 +9,8 @@ import {
   type BoardMetaPatch, type BoardRecord, type BoardStats, type CreateBoardInput, type ResolvedBoard,
 } from "./boards";
 import {
-  className, classExists, getClassSummary, getStudent, hashPin, insertClass, insertStudents, ipBlockedFor, listClasses, listStudents,
-  pinMatches, randomPin, recordIpFailure, recordStudentFailure, toRosterMember, toTeacherStudent, validateRows, studentRef,
+  className, classExists, codeMissBlockedFor, getClassSummary, getStudent, hashPin, insertClass, insertStudents, ipBlockedFor, listClasses, listStudents,
+  pinMatches, randomPin, recordCodeMiss, recordIpFailure, recordStudentFailure, toRosterMember, toTeacherStudent, validateRows, studentRef,
   type RosterMember, type StudentRow,
 } from "./roster";
 import { fail, line, pin as pinValue, rpc, rpcAsync, studentNumber, type RpcResult } from "../board/validate";
@@ -175,6 +175,27 @@ export class Registry extends DurableObject<Env> {
     const r = getBoardRowByCode(this.sql, code);
     if (!r) return null;
     return { id: r.id, code: r.code, title: r.title, archived: r.archived === 1, entryMode: r.entry_mode, locked: r.locked === 1 };
+  }
+
+  /**
+   * 공개 조회(학생 입장 화면·로그인·자유 입장)용: 입장코드 → 보드, 없는 코드 짐작 막기.
+   * 없는 코드만 IP 별로 센다. 한도에 닿은 IP 는 잠시 모든 코드 조회가 429 (있는 코드인지 알려 주지 않으려고).
+   * 없는 코드의 응답은 "다시 확인해 주세요" 404 뿐이다.
+   */
+  lookupBoardByCode(code: string, ip: string): RpcResult<ResolvedBoard> {
+    return rpc(() => {
+      const r = this.lookupRow(code, ip, Date.now());
+      return { id: r.id, code: r.code, title: r.title, archived: r.archived === 1, entryMode: r.entry_mode, locked: r.locked === 1 };
+    });
+  }
+
+  private lookupRow(code: string, ip: string, now: number) {
+    const wait = codeMissBlockedFor(this.sql, ip, now);
+    if (wait > 0) fail("too_many_attempts", "입장코드를 너무 많이 틀렸어요. 1분 뒤에 다시 해 주세요.", 429, wait);
+    const r = getBoardRowByCode(this.sql, code);
+    if (r) return r;
+    recordCodeMiss(this.sql, ip, now);
+    return fail("not_found", "입장코드를 다시 확인해 주세요.", 404);
   }
 
   /** 학생/교사 인증용: 보드 + (명단 학생이면) 그 학생이 지금도 이 보드 반에 있는지 */
@@ -347,7 +368,7 @@ export class Registry extends DurableObject<Env> {
       const now = Date.now();
       const ipWait = ipBlockedFor(this.sql, input.ip, now);
       if (ipWait > 0) fail("too_many_attempts", "시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.", 429, ipWait);
-      const b = getBoardRowByCode(this.sql, input.code) ?? fail("not_found", "입장코드를 다시 확인해 주세요.", 404);
+      const b = this.lookupRow(input.code, input.ip, now);
       if (b.archived) fail("archived", "보관된 보드예요. 선생님께 여쭤 보세요.", 403);
       if (b.entry_mode !== "roster") fail("wrong_entry_mode", "이 보드는 닉네임으로 들어가요.", 400);
       const badCreds = () => {

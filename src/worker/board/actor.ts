@@ -76,10 +76,10 @@ export async function resolveBoardActor(request: Request, env: Env, rawCode: str
     const c = await verifyToken<StudentTokenClaims>(await getSigningSecret(env), STUDENT_TOKEN_PURPOSE, token);
     if (!c || typeof c.b !== "string" || typeof c.r !== "string") return no("unauthorized", 401, "다시 입장해 주세요.");
     const res = await registry.resolveBoardForActor(code, c.k === "roster" ? c.sid : null);
-    if (!res) return no("not_found", 404, "입장코드를 다시 확인해 주세요.");
+    // 보드 범위: 다른 보드의 토큰은 거부. 없는 코드도 같은 답을 준다
+    // (아무 보드 토큰으로 코드가 있는지 없는지 알아내지 못하게. 없는 코드는 공개 조회에서 404·횟수 제한)
+    if (!res || res.board.id !== c.b) return no("unauthorized", 401, "이 보드에 다시 입장해 주세요.");
     const board = res.board;
-    // 보드 범위: 다른 보드의 토큰은 거부
-    if (board.id !== c.b) return no("unauthorized", 401, "이 보드에 다시 입장해 주세요.");
     if (board.archived) return no("archived", 403, "보관된 보드예요. 선생님께 여쭤 보세요.");
     if (c.k !== board.entryMode) return no("unauthorized", 401, "입장 방식이 바뀌었어요. 다시 입장해 주세요.");
     if (c.k === "roster") {

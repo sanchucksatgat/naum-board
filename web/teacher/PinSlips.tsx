@@ -113,7 +113,7 @@ export function PinSlips(props: { classId: string; boardId: string | null }) {
                   <p class="t-slip-top">
                     <span>나눔보드</span>
                     <span>
-                      입장 코드 <strong>{board ? spacedCode(board.code) : "＿＿＿ ＿＿＿"}</strong>
+                      입장 코드 <strong>{board ? spacedCode(board.code) : "＿＿＿＿"}</strong>
                     </span>
                   </p>
                   {board && <p class="t-slip-board">{board.title}</p>}
@@ -124,6 +124,8 @@ export function PinSlips(props: { classId: string; boardId: string | null }) {
                     <p class="t-slip-pin is-registered">나만의 PIN 사용 중</p>
                   ) : (
                     <p class="t-slip-pin" aria-label={`초기 PIN ${s.initialPin ?? ""}`}>
+                      {/* 입장 코드도 숫자 4자리라 헷갈리지 않게 PIN 이라고 적는다 */}
+                      <span class="t-slip-pin-label" aria-hidden="true">PIN</span>
                       {s.initialPin ?? "————"}
                     </p>
                   )}

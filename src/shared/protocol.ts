@@ -575,17 +575,31 @@ export interface RecentPostsResponse {
 
 export const OP_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
-/** 입장코드 글자 (헷갈리는 0 O 1 I L 제외) */
-export const BOARD_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-export const BOARD_CODE_LENGTH = 6;
+/**
+ * 입장코드.
+ * - 새 보드: 숫자 4자리 (예: 4821, 앞자리 0도 그대로 문자열). 한 설치 안에서 붐비면 5·6자리.
+ * - 예전 보드: 영숫자 6자 (헷갈리는 0 O 1 I L 제외, 예: K7QX2M). 계속 쓸 수 있다.
+ */
+export const BOARD_CODE_DIGITS = 4;
+export const BOARD_CODE_MAX_DIGITS = 6;
+export const LEGACY_BOARD_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+export const LEGACY_BOARD_CODE_LENGTH = 6;
+const NUMERIC_CODE_RE = /^[0-9]{4,6}$/;
 
-/** 사용자가 친 입장코드 정리 (공백 제거, 대문자) */
+/** 사용자가 친 입장코드 정리 (전각 글자 → 보통 글자, 공백·- 제거, 대문자) */
 export function normalizeBoardCode(input: string): string {
-  return input.replace(/[\s-]/g, "").toUpperCase();
+  return input.normalize("NFKC").replace(/[\s-]/g, "").toUpperCase();
 }
 
+/** 숫자 4~6자리(새 보드) 또는 영숫자 6자(예전 보드) */
 export function isValidBoardCode(code: string): boolean {
-  if (code.length !== BOARD_CODE_LENGTH) return false;
-  for (const ch of code) if (!BOARD_CODE_ALPHABET.includes(ch)) return false;
+  if (NUMERIC_CODE_RE.test(code)) return true;
+  if (code.length !== LEGACY_BOARD_CODE_LENGTH) return false;
+  for (const ch of code) if (!LEGACY_BOARD_CODE_ALPHABET.includes(ch)) return false;
   return true;
+}
+
+/** 화면에 보일 입장코드: 4·5자리는 그대로("4821"), 6자는 3자씩 띄움("K7Q X2M") */
+export function formatBoardCode(code: string): string {
+  return code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
 }

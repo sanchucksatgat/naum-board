@@ -3,7 +3,7 @@ import "./ui/tokens.css";
 import type { JSX } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { MeResponse } from "../src/shared/api";
-import { BOARD_CODE_LENGTH, isValidBoardCode, normalizeBoardCode } from "../src/shared/protocol";
+import { isValidBoardCode, normalizeBoardCode } from "../src/shared/protocol";
 import { fetchMe } from "./lib/api";
 import { navigate } from "./lib/router";
 
@@ -18,6 +18,7 @@ const css = `
 .h-code { display: flex; gap: var(--sp-2); }
 .h-code .input { flex: 1; min-width: 0; font-size: var(--fs-xl); letter-spacing: .15em; text-transform: uppercase; font-weight: 700; text-align: center; }
 .h-code .input::placeholder { letter-spacing: normal; font-weight: 400; font-size: var(--fs-m); text-transform: none; }
+.h-letters { justify-self: start; background: none; border: 0; padding: var(--sp-1) 0; color: var(--c-text-2); font: inherit; font-size: var(--fs-s); text-decoration: underline; cursor: pointer; }
 .h-setup { background: var(--c-warn-soft); border-radius: var(--r-m); padding: var(--sp-3) var(--sp-4); display: grid; gap: var(--sp-2); }
 .h-setup p { margin: 0; }
 `;
@@ -25,6 +26,8 @@ const css = `
 export function HomePage() {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [code, setCode] = useState("");
+  // 새 코드는 숫자 4자리라 숫자 자판을 띄운다. 예전 코드(영어 섞인 6글자)는 글자 자판으로 바꿔 쓴다.
+  const [letters, setLetters] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,7 +39,7 @@ export function HomePage() {
     e.preventDefault();
     const c = normalizeBoardCode(code);
     if (!c) return setError("선생님이 알려 준 입장 코드를 입력해 주세요.");
-    if (!isValidBoardCode(c)) return setError(`입장 코드는 ${BOARD_CODE_LENGTH}글자예요. 다시 확인해 주세요.`);
+    if (!isValidBoardCode(c)) return setError("입장 코드는 숫자 4자리예요. 다시 확인해 주세요.");
     navigate(`/b/${c}`);
   };
 
@@ -64,12 +67,12 @@ export function HomePage() {
               <input
                 id="h-code-input"
                 class="input"
-                inputMode="text"
+                inputMode={letters ? "text" : "numeric"}
                 autoComplete="off"
                 autoCapitalize="characters"
                 spellcheck={false}
                 maxLength={12}
-                placeholder="예: K7QX2M"
+                placeholder="예: 4821"
                 value={code}
                 aria-invalid={!!error}
                 aria-describedby={error ? "h-code-error" : undefined}
@@ -82,6 +85,9 @@ export function HomePage() {
                 입장
               </button>
             </div>
+            <button type="button" class="h-letters" onClick={() => { setLetters(!letters); document.getElementById("h-code-input")?.focus(); }}>
+              {letters ? "숫자 자판으로 쓰기" : "코드에 영어 글자가 있어요"}
+            </button>
             {error && (
               <p id="h-code-error" class="error-text" role="alert">
                 {error}

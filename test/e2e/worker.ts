@@ -11,6 +11,8 @@
  *     POST /__test/drive?mode=ok|fail|api_off   가짜 Drive 상태 바꾸기
  *            fail: 모든 Drive 호출 503 (백업 실패 시험) · api_off: 403 accessNotConfigured (Drive API 안 켬)
  *     GET  /__test/drive                       가짜 Drive 파일 목록 (내보내기·백업 확인용, 글자 파일은 내용 포함)
+ *     POST /__test/legacy-code?board=<id>&code=K7QX2M
+ *            예전(영숫자 6자) 입장코드 보드 흉내: 방금 만든 보드의 코드를 예전 모양으로 바꾼다 (Registry 원본 + Board 사본)
  *  2) 가짜 Google: globalThis.fetch 를 가로채 oauth2 토큰·Drive API(폴더·resumable 업로드·파일 내려받기·백업·시트 변환)를
  *     메모리에서 흉내 낸다. 실제 Google 로는 아무 요청도 나가지 않는다.
  *
@@ -20,12 +22,20 @@
  */
 import app from "../../src/worker/index";
 import type { Env } from "../../src/worker/env";
-import { getRegistry } from "../../src/worker/stubs";
+import { getBoardStub, getRegistry } from "../../src/worker/stubs";
+import { Registry as RealRegistry } from "../../src/worker/index";
 import { createSessionCookie, forgetOwnerCache } from "../../src/worker/auth/session";
 import { forgetIsolateAccessToken } from "../../src/worker/auth/access";
 import { DRIVE_FILE_SCOPE } from "../../src/worker/auth/google";
 
-export { Registry, Board } from "../../src/worker/index";
+export { Board } from "../../src/worker/index";
+
+/** 시험용 Registry: 예전 입장코드를 직접 넣는 방법 하나만 더한다 */
+export class Registry extends RealRegistry {
+  e2eSetBoardCode(id: string, code: string): boolean {
+    return this.sql.exec("UPDATE boards SET code = ? WHERE id = ?", code, id).rowsWritten > 0;
+  }
+}
 
 const TEST_TEACHER = { sub: "e2e-test-teacher", email: "teacher@example.test" };
 
@@ -236,6 +246,17 @@ async function testRoute(request: Request, env: Env, url: URL): Promise<Response
         ...(textual(f) && f.content.byteLength ? { text: new TextDecoder().decode(f.content) } : {}),
       })),
     });
+  }
+  if (url.pathname === "/__test/legacy-code" && request.method === "POST") {
+    const id = url.searchParams.get("board") ?? "";
+    const code = url.searchParams.get("code") ?? "";
+    const reg = getRegistry(env) as unknown as { e2eSetBoardCode(id: string, code: string): Promise<boolean> };
+    if (!(await reg.e2eSetBoardCode(id, code))) return new Response("no board", { status: 404 });
+    const board = getBoardStub(env, id);
+    const detail = await board.getTeacherDetail();
+    if (!detail) return new Response("no board", { status: 404 });
+    const r = await board.init({ boardId: id, code, settings: detail.settings });
+    return r.ok ? json({ id, code }) : json(r, 400);
   }
   return new Response("not found", { status: 404 });
 }

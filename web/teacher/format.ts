@@ -1,5 +1,5 @@
 /** 표시용 작은 함수들 (순수) */
-import type { BackupInfo, BoardSummary, BoardType, ColumnMode, EntryMode } from "../../src/shared/protocol";
+import { formatBoardCode, type BackupInfo, type BoardSummary, type BoardType, type ColumnMode, type EntryMode } from "../../src/shared/protocol";
 
 export const TYPE_LABEL: Record<BoardType, string> = { single: "학생당 1카드", cumulative: "여러 장 누적" };
 export const COLUMN_LABEL: Record<ColumnMode, string> = { student: "개인별", group: "모둠별", topic: "주제별" };
@@ -72,10 +72,8 @@ export function studentUrl(origin: string, code: string): string {
   return `${origin.replace(/\/+$/, "")}/b/${code}`;
 }
 
-/** "K7QX2M" → "K7Q X2M" (읽기 쉽게) */
-export function spacedCode(code: string): string {
-  return code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
-}
+/** 읽기 쉬운 입장코드: "4821" 그대로, 예전 6자 "K7QX2M" → "K7Q X2M" */
+export const spacedCode = formatBoardCode;
 
 /** 주제 이름 입력(줄바꿈·쉼표 구분) → 정리된 목록 */
 export function parseTopics(input: string, max = 30, maxLen = 60): string[] {

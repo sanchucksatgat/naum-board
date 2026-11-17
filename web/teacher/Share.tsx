@@ -136,7 +136,7 @@ export function Projector(props: { boardId: string }) {
           <p class="t-projector-step">휴대폰 카메라로 QR 코드를 찍거나</p>
           <p class="t-projector-url">{shortUrl.replace(/\/b\/.*$/, "")}</p>
           <p class="t-projector-step">에 들어가서 입장 코드를 입력하세요</p>
-          <p class="t-projector-code">{spacedCode(b.code)}</p>
+          <p class={b.code.length > 5 ? "t-projector-code is-long" : "t-projector-code"}>{spacedCode(b.code)}</p>
           <p class="t-projector-step">{b.entryMode === "roster" ? "그다음 학번과 PIN을 입력해요." : "그다음 닉네임을 적어요."}</p>
         </div>
       </div>
