@@ -1062,6 +1062,10 @@ export class Board extends DurableObject<Env> {
     if (next.entryMode !== prev.entryMode) {
       // 다른 입장 방식의 학생 토큰은 이제 무효
       this.closeWhere((a) => a.role === "student", CLOSE_CODES.reauth, "입장 방식이 바뀌었어요.");
+    } else if (next.requirePin && !prev.requirePin) {
+      // PIN 없이 들어온 학생은 이제 PIN 으로 다시 들어와야 한다 (PIN 으로 들어온 학생은 그대로).
+      // 반대로 PIN 을 안 묻게 바꿀 때는 아무도 끊지 않는다.
+      this.closeWhere((a) => a.role === "student" && a.noPin === true, CLOSE_CODES.reauth, "이제 PIN으로 들어와요.");
     }
     if (next.anonymous !== prev.anonymous || next.columnMode !== prev.columnMode || next.entryMode !== prev.entryMode) {
       void this.broadcastSnapshot();
@@ -1138,8 +1142,8 @@ export class Board extends DurableObject<Env> {
     const kick: string[] = [];
     let changed = 0;
     // 화면에 보이는 값(이름·학번·닉네임·모둠·구성원 목록)이 바뀌었을 때만 모두에게 새 스냅숏을 보낸다.
-    // PIN 등록·초기화(pin_version 만 바뀜)는 그 학생의 예전 연결만 끊으면 된다 — 학생 30명이 처음 들어오며
-    // PIN 을 정할 때마다 접속한 모두에게 큰 스냅숏을 보내던 것을 막는다.
+    // PIN 바꾸기·초기화(pin_version 만 바뀜)는 그 학생의 예전 연결만 끊으면 된다 — 학생 30명이 잇달아
+    // PIN 을 바꿀 때마다 접속한 모두에게 큰 스냅숏을 보내던 것을 막는다.
     let visible = false;
     this.ctx.storage.transactionSync(() => {
       for (const r of list) {

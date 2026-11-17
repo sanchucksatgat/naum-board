@@ -1,12 +1,12 @@
 /** 학생 입장 REST (docs/PROTOCOL.md §8). 오류는 서버의 한국어 message 를 담은 ApiError. */
 import type {
   BoardPublicInfo,
+  ChangePinRequest,
   ErrorCode,
   JoinRequest,
   LoginRequest,
   LoginResponse,
   NicknameRequest,
-  SetPinRequest,
   StudentInfo,
   StudentMeResponse,
   TokenResponse,
@@ -52,7 +52,8 @@ const base = (code: string) => `/api/boards/${encodeURIComponent(code)}`;
 export const studentApi = {
   info: (code: string) => req<BoardPublicInfo>("GET", base(code)),
   login: (code: string, body: LoginRequest) => req<LoginResponse>("POST", base(code) + "/login", body),
-  setPin: (code: string, body: SetPinRequest) => req<TokenResponse>("POST", base(code) + "/pin", body),
+  /** 나만의 PIN 으로 바꾸기 → 새 토큰 (예전 토큰은 모두 무효) */
+  changePin: (code: string, token: string, body: ChangePinRequest) => req<TokenResponse>("POST", base(code) + "/pin", body, token),
   join: (code: string, body: JoinRequest) => req<TokenResponse>("POST", base(code) + "/join", body),
   nickname: (code: string, token: string, body: NicknameRequest) =>
     req<{ student: StudentInfo; token?: string }>("POST", base(code) + "/nickname", body, token),

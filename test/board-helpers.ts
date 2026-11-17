@@ -47,19 +47,28 @@ export function publicPost(path: string, body: unknown, headers: Record<string, 
   return call(path, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
 }
 
-/** 명단 학생 입장 (처음이면 나만의 PIN 등록까지) → 학생 토큰 */
-export async function rosterLogin(code: string, number: string, initialPin: string, myPin = "4826"): Promise<string> {
+/**
+ * 명단 학생 입장 → 학생 토큰. 처음 PIN 으로 들어가지면 myPin 으로 바꾼다(예전 "처음 입장 때 나만의 PIN 정하기"와 같은 상태).
+ * 이미 바꿨으면 myPin 으로 들어간다. myPin 이 null 이면 처음 PIN 그대로 들어간 토큰을 준다.
+ */
+export async function rosterLogin(code: string, number: string, initialPin: string, myPin: string | null = "4826"): Promise<string> {
   let res = await publicPost(`/api/boards/${code}/login`, { number, pin: initialPin });
-  if (res.status !== 200) {
-    // 이미 등록했으면 나만의 PIN 으로
+  if (res.status !== 200 && myPin) {
     res = await publicPost(`/api/boards/${code}/login`, { number, pin: myPin });
+    expect(res.status, await res.clone().text()).toBe(200);
+    return ((await res.json()) as LoginResponse).token;
   }
   expect(res.status, await res.clone().text()).toBe(200);
   const body = (await res.json()) as LoginResponse;
-  if (body.status === "ok") return body.token;
-  const r2 = await publicPost(`/api/boards/${code}/pin`, { setupToken: body.setupToken, newPin: myPin });
+  if (!myPin) return body.token;
+  const r2 = await changePin(code, body.token, initialPin, myPin);
   expect(r2.status, await r2.clone().text()).toBe(200);
   return ((await r2.json()) as TokenResponse).token;
+}
+
+/** 학생이 "내 정보"에서 PIN 바꾸기 */
+export function changePin(code: string, token: string, currentPin: unknown, newPin: unknown, headers: Record<string, string> = {}) {
+  return publicPost(`/api/boards/${code}/pin`, { currentPin, newPin }, { authorization: `Bearer ${token}`, ...headers });
 }
 
 export async function freeJoin(code: string, nickname: string, device = "device-" + crypto.randomUUID().replace(/-/g, "")): Promise<string> {

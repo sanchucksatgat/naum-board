@@ -67,6 +67,12 @@ export const REGISTRY_MIGRATIONS: readonly string[] = [
      window_start INTEGER NOT NULL,
      count INTEGER NOT NULL
    );`,
+  // 3: 명단 입장에서 PIN 을 묻는지 (기존 보드는 그대로 PIN 입장)
+  `ALTER TABLE boards ADD COLUMN require_pin INTEGER NOT NULL DEFAULT 1;`,
+  // 4: 처음 PIN 을 모두 같은 '1234' 로. 아직 나만의 PIN 으로 바꾸지 않은 학생(pin_hash 없음)의 예전 무작위 처음 PIN 을 바꾼다.
+  //    예전 데이터에는 무작위로 만든 것과 교사가 CSV 로 적은 것을 구별할 표시가 없어 모두 '1234' 가 된다.
+  //    나만의 PIN 을 정한 학생(pin_hash 있음)은 건드리지 않는다. 그런 학생만 토큰이 있었으므로 끊기는 연결도 없다.
+  `UPDATE students SET initial_pin = '1234' WHERE pin_hash IS NULL;`,
 ];
 
 /** ctx.storage.sql 에 아직 적용되지 않은 마이그레이션을 적용한다. */

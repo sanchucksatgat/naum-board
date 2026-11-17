@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { LIMITS } from "../../src/shared/protocol";
+import { DEFAULT_PIN, LIMITS } from "../../src/shared/protocol";
 import { BoardConnection, myOnlyPost, type ClosedReason, type ConnState } from "../lib/realtime";
 import { navigate } from "../lib/router";
 import { Modal } from "../ui/Modal";
@@ -23,6 +23,8 @@ export interface BoardScreenProps {
   onClosed: (reason: ClosedReason) => void;
   /** 학생: 나가기 (토큰 지우고 입장 화면) */
   onLeave: () => void;
+  /** 학생: 모두 같은 처음 PIN 으로 막 들어옴 → 바꾸자고 살짝 권한다 */
+  pinNudge?: boolean;
 }
 
 /** 학생·교사 공용 보드 화면 */
@@ -41,6 +43,8 @@ export function BoardScreen(props: BoardScreenProps) {
   const [teacher, setTeacher] = useState<TeacherModule | null>(null);
   const [composer, setComposer] = useState<ComposeTarget | null>(null);
   const [commentsFor, setCommentsFor] = useState<string | null>(null);
+  const [meOpen, setMeOpen] = useState(false);
+  const [nudge, setNudge] = useState(!!props.pinNudge && role === "student");
   const [search, setSearch] = useState(location.search);
   const params = new URLSearchParams(search);
   const projector = role === "teacher" && params.get("view") === "projector";
@@ -103,8 +107,14 @@ export function BoardScreen(props: BoardScreenProps) {
   return (
     <BoardCtx.Provider value={ctx}>
       <div class={"board" + (projector ? " board-projector" : "")}>
-        {projector ? <ProjectorHead /> : <TopBar onLeave={props.onLeave} setToken={props.setToken} />}
+        {projector ? <ProjectorHead /> : <TopBar onLeave={props.onLeave} openMe={() => setMeOpen(true)} />}
         {!projector && teacher ? <teacher.TeacherBar /> : null}
+        {!projector && nudge ? (
+          <PinNudge
+            onChange={() => setMeOpen(true)}
+            onDismiss={() => setNudge(false)}
+          />
+        ) : null}
         {!projector ? <Banners /> : null}
         <Notices />
         <Wall />
@@ -112,6 +122,7 @@ export function BoardScreen(props: BoardScreenProps) {
       </div>
       {composer ? <Composer target={composer} onClose={() => setComposer(null)} /> : null}
       {commentsFor ? <Comments postId={commentsFor} onClose={() => setCommentsFor(null)} /> : null}
+      {meOpen ? <MyInfoDialog onClose={() => setMeOpen(false)} setToken={props.setToken} onPinChanged={() => setNudge(false)} /> : null}
     </BoardCtx.Provider>
   );
 }
@@ -179,13 +190,13 @@ function LockChip() {
   );
 }
 
-function TopBar(props: { onLeave: () => void; setToken: (t: string | null) => void }) {
+function TopBar(props: { onLeave: () => void; openMe: () => void }) {
   const ctx = useBoard();
   const title = useView((v) => v.settings.title);
   const description = useView((v) => v.settings.description);
   const me = useView((v) => v.me);
+  const pinChangeable = useView((v) => v.settings.entryMode === "roster" && v.settings.requirePin !== false);
   const [menu, setMenu] = useState(false);
-  const [nick, setNick] = useState(false);
   const [guide, setGuide] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -244,10 +255,10 @@ function TopBar(props: { onLeave: () => void; setToken: (t: string | null) => vo
                   class="menu-item"
                   onClick={() => {
                     setMenu(false);
-                    setNick(true);
+                    props.openMe();
                   }}
                 >
-                  ✏️ 닉네임 바꾸기
+                  ✏️ 내 정보 (닉네임{pinChangeable ? "·PIN" : ""})
                 </button>
                 <button
                   type="button"
@@ -272,7 +283,6 @@ function TopBar(props: { onLeave: () => void; setToken: (t: string | null) => vo
           {description}
         </p>
       ) : null}
-      {nick ? <NicknameDialog onClose={() => setNick(false)} setToken={props.setToken} /> : null}
     </header>
   );
 }
@@ -318,15 +328,78 @@ function ComposeFab() {
   );
 }
 
-function NicknameDialog(props: { onClose: () => void; setToken: (t: string | null) => void }) {
-  const ctx = useBoard();
+/** 처음 PIN(1234)으로 들어온 학생에게: 바꾸자고 살짝 권함 (닫을 수 있음) */
+function PinNudge(props: { onChange: () => void; onDismiss: () => void }) {
+  return (
+    <div class="banners">
+      <div class="banner banner-soft pin-nudge" role="status">
+        <span class="pin-nudge-text">
+          🔑 처음 번호 {DEFAULT_PIN}를 쓰고 있어요. 나만의 번호로 바꿔 볼까요?
+        </span>
+        <span class="pin-nudge-actions">
+          <button type="button" class="btn btn-small btn-primary" onClick={props.onChange}>
+            바꾸기
+          </button>
+          <button type="button" class="btn btn-small btn-ghost" onClick={props.onDismiss} aria-label="안내 닫기">
+            다음에
+          </button>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** 친구가 쉽게 맞힐 수 있는 번호 (막지는 않고 알려만 줌) */
+export function isEasyPin(p: string): boolean {
+  if (!/^\d{4}$/.test(p)) return false;
+  const d = [...p].map(Number);
+  const same = d.every((x) => x === d[0]);
+  const up = d.every((x, i) => i === 0 || x === d[i - 1]! + 1);
+  const down = d.every((x, i) => i === 0 || x === d[i - 1]! - 1);
+  const pair = d[0] === d[2] && d[1] === d[3];
+  return same || up || down || pair;
+}
+
+function digits4(v: string) {
+  return v.replace(/\D/g, "").slice(0, 4);
+}
+
+/** 학생 "내 정보": 닉네임 바꾸기 + (PIN 을 묻는 명단 보드면) PIN 바꾸기 */
+function MyInfoDialog(props: { onClose: () => void; setToken: (t: string | null) => void; onPinChanged: () => void }) {
   const me = useView((v) => v.me);
   const entryMode = useView((v) => v.settings.entryMode);
+  const pinChangeable = useView((v) => v.settings.entryMode === "roster" && v.settings.requirePin !== false);
+  return (
+    <Modal
+      title="내 정보"
+      onClose={props.onClose}
+      footer={
+        <button type="button" class="btn" onClick={props.onClose}>
+          닫기
+        </button>
+      }
+    >
+      <div class="stack myinfo">
+        {me.number ? (
+          <p class="muted myinfo-who">
+            {me.realName ?? me.name} · 학번 {me.number}
+          </p>
+        ) : null}
+        <NicknameSection setToken={props.setToken} roster={entryMode === "roster"} />
+        {pinChangeable ? <PinSection setToken={props.setToken} onChanged={props.onPinChanged} /> : null}
+      </div>
+    </Modal>
+  );
+}
+
+function NicknameSection(props: { setToken: (t: string | null) => void; roster: boolean }) {
+  const ctx = useBoard();
+  const me = useView((v) => v.me);
   const locked = useView((v) => v.settings.locked);
-  const [value, setValue] = useState(me.nickname ?? (entryMode === "free" ? me.name : ""));
+  const [value, setValue] = useState(me.nickname ?? (props.roster ? "" : me.name));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const roster = entryMode === "roster";
+  const roster = props.roster;
 
   const submit = async (e: Event) => {
     e.preventDefault();
@@ -347,8 +420,7 @@ function NicknameDialog(props: { onClose: () => void; setToken: (t: string | nul
         const rem = getRemembered(ctx.code);
         if (rem?.number) setRemembered(ctx.code, { ...rem, name: r.student.name });
       }
-      toast(n ? `이제 "${r.student.name}"(으)로 보여요.` : "이름으로 보이게 했어요.", { kind: "success" });
-      props.onClose();
+      toast(n ? `이제 닉네임 "${r.student.name}" 이름표로 보여요.` : "이름으로 보이게 했어요.", { kind: "success" });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "바꾸지 못했어요. 다시 해 주세요.");
     } finally {
@@ -357,45 +429,133 @@ function NicknameDialog(props: { onClose: () => void; setToken: (t: string | nul
   };
 
   return (
-    <Modal
-      title="닉네임 바꾸기"
-      onClose={props.onClose}
-      footer={
-        <>
-          <button type="button" class="btn" onClick={props.onClose}>
-            취소
-          </button>
-          <button type="submit" form="nick-form" class="btn btn-primary" disabled={busy || locked}>
-            바꾸기
-          </button>
-        </>
-      }
-    >
-      <form id="nick-form" class="stack" onSubmit={submit}>
-        <p class="muted" style={{ margin: 0 }}>
-          친구들에게 보이는 이름이에요. {roster ? "학번은 바뀌지 않고, 선생님은 원래 이름을 볼 수 있어요." : ""}
+    <form class="stack myinfo-section" onSubmit={submit} aria-labelledby="nick-head">
+      <h3 id="nick-head" class="myinfo-head">
+        닉네임
+      </h3>
+      <p class="hint" style={{ margin: 0 }}>
+        친구들에게 보이는 이름이에요. {roster ? "학번은 바뀌지 않고, 선생님은 원래 이름을 볼 수 있어요." : ""}
+      </p>
+      <div class="field">
+        <label for="nick-input" class="sr-only">
+          닉네임
+        </label>
+        <input
+          id="nick-input"
+          class="input"
+          maxLength={LIMITS.nickname}
+          value={value}
+          autoComplete="off"
+          disabled={locked}
+          placeholder={roster ? `비우면 이름(${me.realName ?? ""})으로 보여요` : "예: 별빛"}
+          onInput={(e) => setValue((e.currentTarget as HTMLInputElement).value)}
+        />
+        <span class="hint">전화번호·주소 같은 개인정보는 쓰지 않아요.</span>
+      </div>
+      {locked ? <p class="hint">🔒 보드가 잠겨서 지금은 닉네임을 바꿀 수 없어요.</p> : null}
+      {error ? (
+        <p class="error-text" role="alert">
+          {error}
         </p>
-        <div class="field">
-          <label for="nick-input">닉네임</label>
-          <input
-            id="nick-input"
-            class="input"
-            maxLength={LIMITS.nickname}
-            value={value}
-            autoComplete="off"
-            placeholder={roster ? `비우면 이름(${me.realName ?? ""})으로 보여요` : "예: 별빛"}
-            onInput={(e) => setValue((e.currentTarget as HTMLInputElement).value)}
-          />
-          <span class="hint">전화번호·주소 같은 개인정보는 쓰지 않아요.</span>
-        </div>
-        {locked ? <p class="hint">🔒 보드가 잠겨서 지금은 바꿀 수 없어요.</p> : null}
-        {error ? (
-          <p class="error-text" role="alert">
-            {error}
-          </p>
-        ) : null}
-      </form>
-    </Modal>
+      ) : null}
+      <button type="submit" class="btn btn-primary myinfo-btn" disabled={busy || locked}>
+        {busy ? "바꾸는 중…" : "닉네임 바꾸기"}
+      </button>
+    </form>
+  );
+}
+
+function PinSection(props: { setToken: (t: string | null) => void; onChanged: () => void }) {
+  const ctx = useBoard();
+  const [cur, setCur] = useState("");
+  const [a, setA] = useState("");
+  const [b, setB] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const easy = a.length === 4 && a !== DEFAULT_PIN && isEasyPin(a);
+
+  const submit = async (e: Event) => {
+    e.preventDefault();
+    setError(null);
+    setDone(false);
+    if (!/^\d{4}$/.test(cur)) return setError("지금 PIN 숫자 4자리를 써 주세요.");
+    if (!/^\d{4}$/.test(a)) return setError("새 PIN은 숫자 4자리로 정해 주세요.");
+    if (a === DEFAULT_PIN) return setError(`${DEFAULT_PIN}는 모두가 아는 처음 번호라서 쓸 수 없어요. 다른 숫자로 정해 주세요.`);
+    if (a === cur) return setError("지금 PIN과 다른 번호로 정해 주세요.");
+    if (a !== b) return setError("새 PIN을 두 번 똑같이 써 주세요.");
+    setBusy(true);
+    try {
+      // 바꾸면 이 학생의 예전 입장(다른 기기 포함)이 모두 끝나므로, 지금 연결은 잠시 멈췄다가 새 토큰으로 다시 붙는다
+      await ctx.conn.withTokenChange(async () => {
+        const t = getCurrentToken(ctx.code);
+        if (!t) throw new ApiError(401, "unauthorized", "다시 입장해 주세요.");
+        const r = await studentApi.changePin(ctx.code, t, { currentPin: cur, newPin: a });
+        props.setToken(r.token);
+      });
+      setCur("");
+      setA("");
+      setB("");
+      setDone(true);
+      props.onChanged();
+      toast("PIN을 바꿨어요. 다음부터 새 PIN으로 들어와요.", { kind: "success" });
+    } catch (err) {
+      setCur("");
+      setError(err instanceof ApiError ? err.message : "바꾸지 못했어요. 다시 해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pinInput = (id: string, label: string, value: string, set: (v: string) => void, auto: string) => (
+    <div class="field">
+      <label for={id}>{label}</label>
+      <input
+        id={id}
+        class="input myinfo-pin"
+        type="password"
+        inputMode="numeric"
+        autoComplete={auto}
+        maxLength={4}
+        placeholder="••••"
+        value={value}
+        onInput={(e) => {
+          set(digits4((e.currentTarget as HTMLInputElement).value));
+          setError(null);
+          setDone(false);
+        }}
+      />
+    </div>
+  );
+
+  return (
+    <form class="stack myinfo-section" onSubmit={submit} aria-labelledby="pin-head" noValidate>
+      <h3 id="pin-head" class="myinfo-head">
+        PIN 바꾸기
+      </h3>
+      <p class="hint" style={{ margin: 0 }}>
+        나만 아는 숫자 4자리로 바꾸면 친구가 내 이름으로 들어올 수 없어요. 친구에게 알려 주지 마세요.
+      </p>
+      {pinInput("pin-cur", "지금 PIN", cur, setCur, "current-password")}
+      <div class="myinfo-pin-row">
+        {pinInput("pin-new", "새 PIN", a, setA, "new-password")}
+        {pinInput("pin-again", "새 PIN 한 번 더", b, setB, "new-password")}
+      </div>
+      {easy ? <p class="hint myinfo-warn">⚠️ 친구가 맞히기 쉬운 번호예요. 다른 번호면 더 안전해요.</p> : null}
+      {error ? (
+        <p class="error-text" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {done ? (
+        <p class="myinfo-done" role="status">
+          ✅ 새 PIN으로 바꿨어요. 다음부터 새 PIN으로 들어와요.
+        </p>
+      ) : null}
+      <button type="submit" class="btn btn-primary myinfo-btn" disabled={busy}>
+        {busy ? "바꾸는 중…" : "PIN 바꾸기"}
+      </button>
+    </form>
   );
 }
 

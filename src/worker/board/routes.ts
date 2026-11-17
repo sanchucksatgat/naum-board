@@ -1,8 +1,8 @@
 /**
  * 학생 입장 REST + 보드 웹소켓 경로 (DESIGN §4, §6). 태스크2.
  *   GET  /api/boards/:code            공개 정보
- *   POST /api/boards/:code/login      명단: 학번 + PIN
- *   POST /api/boards/:code/pin        처음 입장: 나만의 PIN 정하기
+ *   POST /api/boards/:code/login      명단: 학번 + PIN (PIN 없는 보드는 학번만)
+ *   POST /api/boards/:code/pin        나만의 PIN 으로 바꾸기 (학생 토큰)
  *   POST /api/boards/:code/join       자유: 닉네임 + 기기 토큰
  *   POST /api/boards/:code/nickname   닉네임 바꾸기 (학생 토큰)
  *   GET  /api/boards/:code/me         학생 토큰 확인
@@ -18,7 +18,7 @@ import {
   type BoardPublicInfo, type LoginResponse, type StudentInfo, type StudentMeResponse, type TokenResponse,
 } from "../../shared/protocol";
 import { assertSameOrigin, readJson, syncClassRoster, unwrap } from "../registry/sync";
-import { freeRef, issuePinSetupToken, issueStudentToken, readPinSetupToken, resolveBoardActor, studentTokenFrom } from "./actor";
+import { freeRef, issueStudentToken, resolveBoardActor, studentTokenFrom, type StudentTokenClaims } from "./actor";
 import { ACTOR_HEADER, type ConnectHeader } from "./index";
 import { line } from "./validate";
 import { ValidationError } from "./validate";
@@ -59,7 +59,7 @@ function nicknameValue(v: unknown, required: boolean): string {
 boardRoutes.get("/api/boards/:code", async (c) => {
   const code = codeParam(c.req.param("code"));
   const b = unwrap(await getRegistry(c.env).lookupBoardByCode(code, clientIp(c.req.raw)));
-  const body: BoardPublicInfo = { code: b.code, title: b.title, entryMode: b.entryMode, locked: b.locked, archived: b.archived };
+  const body: BoardPublicInfo = { code: b.code, title: b.title, entryMode: b.entryMode, requirePin: b.requirePin, locked: b.locked, archived: b.archived };
   return c.json(body, 200, noStore);
 });
 
@@ -68,32 +68,31 @@ boardRoutes.post("/api/boards/:code/login", async (c) => {
   const code = codeParam(c.req.param("code"));
   const body = await readJson(c);
   const r = unwrap(await getRegistry(c.env).studentLogin({ code, number: body.number, pin: body.pin, ip: clientIp(c.req.raw) }));
-  const student = rosterStudentInfo(r.student);
-  let res: LoginResponse;
-  if (r.needsSetup) {
-    res = { status: "pin_setup", setupToken: await issuePinSetupToken(c.env, { b: r.board.id, sid: r.student.id, pv: r.student.pinVersion }), student };
-  } else {
-    const token = await issueStudentToken(c.env, { b: r.board.id, r: r.student.ref, k: "roster", sid: r.student.id, pv: r.student.pinVersion });
-    res = { status: "ok", token, student };
-  }
+  const claims: StudentTokenClaims = { b: r.board.id, r: r.student.ref, k: "roster", sid: r.student.id, pv: r.student.pinVersion };
+  if (r.noPin) claims.np = 1;
+  const res: LoginResponse = { status: "ok", token: await issueStudentToken(c.env, claims), student: rosterStudentInfo(r.student) };
+  if (r.defaultPin) res.defaultPin = true;
   return c.json(res, 200, noStore);
 });
 
 boardRoutes.post("/api/boards/:code/pin", async (c) => {
   assertSameOrigin(c.req.raw);
-  const code = codeParam(c.req.param("code"));
+  if (!studentTokenFrom(c.req.raw)) throw new HttpError(401, "unauthorized", "다시 입장해 주세요.");
+  const res = await resolveBoardActor(c.req.raw, c.env, c.req.param("code"));
+  if (!res.ok) throw new HttpError(res.status, res.code, res.message);
+  if (!res.student || res.claims?.k !== "roster") throw new HttpError(400, "wrong_entry_mode", "명단으로 들어온 학생만 PIN을 바꿀 수 있어요.");
+  // PIN 없이 들어오는 보드에서는 바꿀 수 없다 (지금 PIN 을 확인한 적이 없으므로)
+  if (!res.board.requirePin || res.actor.noPin) throw new HttpError(400, "wrong_entry_mode", "이 보드는 PIN 없이 들어와요.");
   const body = await readJson(c);
-  const setup = await readPinSetupToken(c.env, body.setupToken);
-  if (!setup) throw new HttpError(401, "unauthorized", "시간이 지났어요. 처음부터 다시 입장해 주세요.");
-  const reg = getRegistry(c.env);
-  const b = await reg.resolveBoardByCode(code);
-  if (!b || b.id !== setup.b) throw new HttpError(401, "unauthorized", "처음부터 다시 입장해 주세요.");
-  const r = unwrap(await reg.studentSetPin({ boardId: setup.b, studentId: setup.sid, pinVersion: setup.pv, newPin: body.newPin }));
-  // PIN 버전이 올라갔으니 보드 사본도 맞춘다 (예전 토큰 연결 끊김)
-  c.executionCtx.waitUntil(syncClassRoster(c.env, r.student.classId).catch((e) => console.warn("roster sync failed", e)));
-  const token = await issueStudentToken(c.env, { b: r.board.id, r: r.student.ref, k: "roster", sid: r.student.id, pv: r.student.pinVersion });
-  const res: TokenResponse = { token, student: rosterStudentInfo(r.student) };
-  return c.json(res, 200, noStore);
+  const s = unwrap(
+    await getRegistry(c.env).studentChangePin({
+      studentId: res.student.id, pinVersion: res.student.pinVersion, currentPin: body.currentPin, newPin: body.newPin, ip: clientIp(c.req.raw),
+    }),
+  );
+  // PIN 버전이 올라갔으니 보드 사본도 맞춘다 → 이 학생의 예전 토큰 연결은 모두 4001 로 끊긴다
+  await syncClassRoster(c.env, s.classId).catch((e) => console.warn("roster sync failed", e));
+  const token = await issueStudentToken(c.env, { b: res.board.id, r: s.ref, k: "roster", sid: s.id, pv: s.pinVersion });
+  return c.json({ token, student: rosterStudentInfo(s) } satisfies TokenResponse, 200, noStore);
 });
 
 boardRoutes.post("/api/boards/:code/join", async (c) => {
@@ -107,7 +106,7 @@ boardRoutes.post("/api/boards/:code/join", async (c) => {
   }
   const b = unwrap(await getRegistry(c.env).lookupBoardByCode(code, clientIp(c.req.raw)));
   if (b.archived) throw new HttpError(403, "archived", "보관된 보드예요. 선생님께 여쭤 보세요.");
-  if (b.entryMode !== "free") throw new HttpError(400, "wrong_entry_mode", "이 보드는 학번과 PIN으로 들어가요.");
+  if (b.entryMode !== "free") throw new HttpError(400, "wrong_entry_mode", b.requirePin ? "이 보드는 학번과 PIN으로 들어가요." : "이 보드는 학번으로 들어가요.");
   const ref = await freeRef(b.id, device);
   const r = unwrap(await getBoardStub(c.env, b.id).joinFree({ ref, nickname }));
   const token = await issueStudentToken(c.env, { b: b.id, r: ref, k: "free", n: r.nickname });

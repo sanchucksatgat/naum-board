@@ -1,6 +1,6 @@
 /** PIN 쪽지 인쇄: A4 한 장에 N개, 자르는 선, 학번순 */
 import { useEffect, useMemo, useState } from "preact/hooks";
-import type { BoardSummary, TeacherStudent } from "../../src/shared/protocol";
+import { DEFAULT_PIN, type BoardSummary, type TeacherStudent } from "../../src/shared/protocol";
 import { api } from "./api";
 import { spacedCode } from "./format";
 import { Link, go } from "./nav";
@@ -18,7 +18,7 @@ export function PinSlips(props: { classId: string; boardId: string | null }) {
     const [classes, students, boards] = await Promise.all([api.classes(), api.students(props.classId), api.boards("0")]);
     const cls = classes.find((c) => c.id === props.classId);
     if (!cls) throw new Error("반을 찾을 수 없어요.");
-    return { cls, students, boards: boards.filter((b) => b.classId === props.classId && b.entryMode === "roster") };
+    return { cls, students, boards: boards.filter((b) => b.classId === props.classId && b.entryMode === "roster" && b.requirePin) };
   }, [props.classId]);
   const [perPage, setPerPage] = useState<number>(12);
   const [includeRegistered, setIncludeRegistered] = useState(false);
@@ -39,6 +39,7 @@ export function PinSlips(props: { classId: string; boardId: string | null }) {
   if (data.status === "error") return <ErrorBox error={data.error} onRetry={reload} />;
   const { cls } = data.data;
   const registeredCount = students.filter((s) => s.pinRegistered).length;
+  const customCount = students.filter((s) => !s.pinRegistered && s.initialPin && s.initialPin !== DEFAULT_PIN).length;
 
   return (
     <div class="stack t-page">
@@ -55,7 +56,8 @@ export function PinSlips(props: { classId: string; boardId: string | null }) {
           </button>
         </div>
         <p class="muted">
-          쪽지를 잘라 한 명씩 나눠 주세요. 학생은 처음 들어올 때 이 초기 PIN을 넣고, 바로 ‘나만의 PIN’을 정해요. 그 뒤에는 초기 PIN을 쓸 수 없어요.
+          이제 모든 학생은 같은 처음 PIN <strong>{DEFAULT_PIN}</strong>로 시작해서, 쪽지가 꼭 필요하지는 않아요. 명단에 PIN을 따로 적은 학생이 있거나
+          (지금 {customCount}명), 입장 코드를 종이로 나눠 주고 싶을 때 쓰세요. 학생이 나만의 PIN으로 바꾸면 그 번호는 아무도 모르고, 쪽지에도 나오지 않아요.
         </p>
         <div class="card t-print-controls">
           <div class="field">
@@ -89,7 +91,7 @@ export function PinSlips(props: { classId: string; boardId: string | null }) {
             </select>
           </div>
           <Toggle
-            label={`나만의 PIN을 정한 학생도 넣기 (${registeredCount}명)`}
+            label={`나만의 PIN으로 바꾼 학생도 넣기 (${registeredCount}명)`}
             hint="이 학생들은 PIN 대신 ‘나만의 PIN 사용 중’이라고 나와요."
             checked={includeRegistered}
             onChange={setIncludeRegistered}
@@ -102,7 +104,7 @@ export function PinSlips(props: { classId: string; boardId: string | null }) {
 
       {!slips.length ? (
         <Empty title={students.length ? "인쇄할 쪽지가 없어요." : "명단에 학생이 없어요."}>
-          <p class="muted">{students.length ? "모든 학생이 나만의 PIN을 정했어요. 위에서 ‘정한 학생도 넣기’를 켜면 인쇄할 수 있어요." : "먼저 명단에 학생을 넣어 주세요."}</p>
+          <p class="muted">{students.length ? "모든 학생이 나만의 PIN으로 바꿨어요. 위에서 ‘바꾼 학생도 넣기’를 켜면 인쇄할 수 있어요." : "먼저 명단에 학생을 넣어 주세요."}</p>
         </Empty>
       ) : (
         <div class="t-slip-pages" aria-label="PIN 쪽지 미리보기">
@@ -123,15 +125,15 @@ export function PinSlips(props: { classId: string; boardId: string | null }) {
                   {s.pinRegistered ? (
                     <p class="t-slip-pin is-registered">나만의 PIN 사용 중</p>
                   ) : (
-                    <p class="t-slip-pin" aria-label={`초기 PIN ${s.initialPin ?? ""}`}>
+                    <p class="t-slip-pin" aria-label={`처음 PIN ${s.initialPin ?? DEFAULT_PIN}`}>
                       {/* 입장 코드도 숫자 4자리라 헷갈리지 않게 PIN 이라고 적는다 */}
                       <span class="t-slip-pin-label" aria-hidden="true">PIN</span>
-                      {s.initialPin ?? "————"}
+                      {s.initialPin ?? DEFAULT_PIN}
                     </p>
                   )}
                   <p class="t-slip-help">
                     {host}/b/{board?.code ?? "코드"} → 학번과 {s.pinRegistered ? "나만의 PIN" : "이 PIN"} 입력
-                    {s.pinRegistered ? "" : " → 나만의 PIN 정하기"}
+                    {s.pinRegistered ? "" : " → ‘내 정보’에서 나만의 PIN으로 바꿀 수 있어요"}
                   </p>
                 </article>
               ))}

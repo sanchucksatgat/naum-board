@@ -1,12 +1,12 @@
 /** 반 목록, 반 만들기, 반 명단(학생 추가·수정·삭제·모둠·PIN 초기화·잠금 해제·내려받기) */
 import type { ComponentChildren, JSX } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { LIMITS, type ClassSummary, type StudentRowInput, type TeacherStudent } from "../../src/shared/protocol";
+import { DEFAULT_PIN, LIMITS, type ClassSummary, type StudentRowInput, type TeacherStudent } from "../../src/shared/protocol";
 import { api, errorMessage } from "./api";
 import { formatDateTime } from "./format";
 import { Link, go } from "./nav";
 import { RosterImport } from "./RosterImport";
-import { compareNumber, rosterCsv, safeFileName } from "./roster";
+import { compareNumber, pinStatusText, rosterCsv, safeFileName } from "./roster";
 import { Empty, ErrorBox, Loading, Modal, TypeToConfirm, downloadText, toast, useAction, useAsync } from "./ui";
 
 // ───────────── 반 목록 ─────────────
@@ -195,7 +195,7 @@ export function ClassDetail(props: { id: string }) {
         <div class="t-minw0">
           <h1 class="t-h1 t-break">{c.name}</h1>
           <p class="hint">
-            학생 {list.length}명 · 나만의 PIN 등록 {registered}명 · 연결된 보드 {c.boardCount}개
+            학생 {list.length}명 · 나만의 PIN으로 바꾼 학생 {registered}명 · 연결된 보드 {c.boardCount}개
           </p>
         </div>
         <div class="row">
@@ -228,8 +228,8 @@ export function ClassDetail(props: { id: string }) {
         </Link>
       </div>
       <p class="hint">
-        초기 PIN은 학생이 처음 들어와 ‘나만의 PIN’을 정하기 전까지만 보여요. 나만의 PIN은 선생님도 알 수 없어요. 잊었다면 ‘PIN 초기화’를 눌러 새 초기
-        PIN을 주세요.
+        처음 PIN은 모두 {DEFAULT_PIN}예요 (명단에 PIN을 따로 적은 학생은 그 번호). 학생이 보드의 ‘내 정보’에서 나만의 PIN으로 바꾸면 ‘바꿈’으로 보이고, 그
+        번호는 선생님도 알 수 없어요. 잊었다면 ‘PIN 초기화’를 누르면 다시 {DEFAULT_PIN}가 돼요.
       </p>
 
       {students.status === "loading" && <Loading text="명단을 불러오는 중이에요…" />}
@@ -276,7 +276,15 @@ export function ClassDetail(props: { id: string }) {
                         <td data-label="모둠">{s.group || <span class="hint">없음</span>}</td>
                         <td data-label="닉네임">{s.nickname || <span class="hint">없음</span>}</td>
                         <td data-label="PIN">
-                          {s.pinRegistered ? <span class="chip chip-primary">나만의 PIN 등록</span> : <code class="t-pin">{s.initialPin ?? "—"}</code>}
+                          {s.pinRegistered ? (
+                            <span class="chip chip-primary" title="학생이 나만의 PIN으로 바꿨어요">
+                              바꿈
+                            </span>
+                          ) : (
+                            <span aria-label={pinStatusText(s)}>
+                              <code class="t-pin">{s.initialPin ?? DEFAULT_PIN}</code> <span class="hint">(처음 번호)</span>
+                            </span>
+                          )}
                           {locked && (
                             <span class="chip chip-danger t-ml" title={`${formatDateTime(s.lockedUntil!)}까지`}>
                               5회 틀려 잠김
@@ -345,21 +353,21 @@ export function ClassDetail(props: { id: string }) {
       {dialog?.kind === "reset" && (
         <ConfirmModal
           title="PIN 초기화"
-          confirmLabel="새 초기 PIN 만들기"
+          confirmLabel={`${DEFAULT_PIN}로 되돌리기`}
           onClose={() => setDialog(null)}
           onConfirm={async () => {
             const s = await api.resetPin(dialog.student.id);
             replace(s);
-            toast(`${s.name} 학생의 새 초기 PIN은 ${s.initialPin ?? "—"} 이에요.`);
+            toast(`${s.name} 학생의 PIN을 처음 번호 ${s.initialPin ?? DEFAULT_PIN}(으)로 되돌렸어요.`);
           }}
         >
           <p>
             <strong>
               {dialog.student.number} {dialog.student.name}
             </strong>{" "}
-            학생에게 새 초기 PIN을 만들어요.
+            학생의 PIN을 처음 번호 {DEFAULT_PIN}로 되돌려요.
           </p>
-          <p class="muted">지금 들어와 있는 기기는 연결이 끊기고, 학생은 새 초기 PIN으로 다시 들어와 나만의 PIN을 정해야 해요. 쓴 글은 그대로예요.</p>
+          <p class="muted">지금 들어와 있는 기기는 연결이 끊기고, 학생은 {DEFAULT_PIN}로 다시 들어와요. 잠금도 풀려요. 쓴 글은 그대로예요.</p>
         </ConfirmModal>
       )}
       {dialog?.kind === "remove" && (

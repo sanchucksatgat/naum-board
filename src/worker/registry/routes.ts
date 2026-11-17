@@ -59,7 +59,7 @@ teacherRoutes.post("/api/teacher/boards", async (c) => {
   const cls = classId === undefined || classId === null || classId === "" ? null : String(classId);
   const reg = getRegistry(c.env);
   const rec = unwrap(
-    await reg.createBoard({ title: settings.title, type: settings.type, columnMode: settings.columnMode, entryMode: settings.entryMode, classId: cls, locked: settings.locked }),
+    await reg.createBoard({ title: settings.title, type: settings.type, columnMode: settings.columnMode, entryMode: settings.entryMode, requirePin: settings.requirePin, classId: cls, locked: settings.locked }),
   );
   const board = getBoardStub(c.env, rec.id);
   const init = await board.init({ boardId: rec.id, code: rec.code, settings });

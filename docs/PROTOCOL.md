@@ -8,9 +8,9 @@
 ## 1. 접속 흐름
 
 ```
-학생(명단)  GET  /api/boards/{code}            → 공개 정보 (제목, 입장 방식, 잠김/보관)
-            POST /api/boards/{code}/login      → { status:"ok", token } | { status:"pin_setup", setupToken }
-            POST /api/boards/{code}/pin        → { token }          (처음 입장: 나만의 PIN)
+학생(명단)  GET  /api/boards/{code}            → 공개 정보 (제목, 입장 방식, PIN 묻는지, 잠김/보관)
+            POST /api/boards/{code}/login      → { status:"ok", token, defaultPin? }   (학번 + PIN, 또는 학번만)
+            POST /api/boards/{code}/pin        → { token }          (Bearer: 나만의 PIN 으로 바꾸기, 새 토큰)
 학생(자유)  POST /api/boards/{code}/join       → { token }          (닉네임 + 기기 토큰)
             WS   /api/boards/{code}/ws?st={token}
 교사        WS   /api/boards/{code}/ws         (세션 쿠키, 같은 출처에서만)
@@ -23,17 +23,34 @@
 
 ### 1.1 명단 입장 (학번 + PIN)
 
-1. 교사가 명단을 넣을 때 PIN 칸이 비면 서버가 **무작위 4자리 초기 PIN** 을 만든다(교사 화면·PIN 쪽지에 보임).
-2. 학생이 학번 + 초기 PIN 으로 `login` → `pin_setup` + `setupToken`(10분).
-3. `pin` 에 `{ setupToken, newPin }` → 나만의 PIN 저장(초기 PIN·`1111`·`0000`·`1234` 금지) → 학생 토큰.
-   이때부터 초기 PIN 은 지워지고, 서버에는 `HMAC-SHA256(PIN 전용 키, 학생별 salt + ":" + PIN)` 만 남는다.
-4. 다음부터는 학번 + 나만의 PIN → `{ status:"ok", token }`.
+1. 처음 PIN 은 모두 `1234`(`DEFAULT_PIN`). 교사가 명단 CSV 에 PIN 을 적으면 그 학생은 그 번호로 시작한다(교사 화면·PIN 쪽지에 보임).
+2. 학생이 학번 + 처음 PIN 으로 `login` → 바로 `{ status:"ok", token }`. 나만의 PIN 으로 바꾸라고 **강제하지 않는다**.
+   `1234` 로 들어왔으면 `defaultPin: true` → 화면이 "처음 번호 1234를 쓰고 있어요. 나만의 번호로 바꿔 볼까요?" 안내(닫을 수 있음)를 띄운다.
+   CSV 로 받은 처음 PIN 은 모두가 아는 번호가 아니므로 `defaultPin` 이 없다.
+3. 학생이 보드의 "내 정보"에서 `POST /pin` (Bearer) `{ currentPin, newPin }` → `{ token, student }`.
+   - `currentPin` 이 틀리면 `invalid_credentials` (로그인과 같은 학번별 5회 잠금·IP 실패 제한에 센다), 잠긴 동안은 `student_locked`.
+   - `newPin` 은 숫자 4자리, `1234` 는 `invalid_pin`. 그 밖의 쉬운 번호(`1111` 등)는 서버가 막지 않는다(화면이 알려만 줌).
+   - 바꾸면 처음 PIN 은 지워지고 서버에는 `HMAC-SHA256(PIN 전용 키, 학생별 salt + ":" + PIN)` 만 남는다.
+   - PIN 버전이 올라가 그 학생의 **예전 토큰·연결은 모두 무효**(다른 기기, 친구가 1234 로 들어와 있던 것 포함 → 4001). 바꾼 기기는 응답의 새 토큰을 쓴다
+     (클라이언트는 요청 동안 웹소켓을 잠시 멈췄다가 새 토큰으로 다시 붙는다 — `BoardConnection.withTokenChange`).
+   - PIN 을 묻지 않는 보드(아래)에서는 `wrong_entry_mode`.
+4. 다음부터는 학번 + 나만의 PIN.
 
-시도 제한: 학번별 5회 실패 → 5분 잠금(`student_locked`, 맞는 PIN 도 거부). IP 당 1분에 실패 30회 → `too_many_attempts`
-(학교는 NAT 로 IP 를 공유하므로 **실패만** 센다). 둘 다 429 + `retryAfterMs` + `Retry-After` 헤더.
+시도 제한: 학번별 5회 실패 → 5분 잠금(`student_locked`, 맞는 PIN 도 거부, "PIN을 5번 틀려서 잠깐 잠겼어요. 5분쯤 뒤에 다시 하거나 선생님께 말해 주세요.").
+IP 당 1분에 실패 30회 → `too_many_attempts` (학교는 NAT 로 IP 를 공유하므로 **실패만** 센다). 둘 다 429 + `retryAfterMs` + `Retry-After` 헤더.
+모두 `1234` 를 알아도 보호는 예전과 같다: PIN 을 바꾼 학생에게 친구가 `1234` 를 넣으면 틀린 시도로 세고, 5번이면 그 학번이 5분 잠긴다(예전에도
+학번만 알면 누구나 틀린 PIN 으로 잠글 수 있었다). 교사는 "잠금 풀기"로 바로 푼다.
 없는 입장코드 조회(`GET /api/boards/:code`, `login`, `join`)는 따로 센다: IP 당 1분에 60번 → 그 1분이 끝날 때까지 그 IP 의 코드 조회가 모두
 429 `too_many_attempts` ("입장코드를 너무 많이 틀렸어요. 1분 뒤에 다시 해 주세요."). 있는 코드 조회는 세지 않는다.
-교사가 PIN 을 초기화하면 새 초기 PIN 이 생기고 PIN 버전이 올라가 **기존 토큰·연결이 모두 무효**(연결은 4001 로 끊김).
+교사가 PIN 을 초기화하면 처음 PIN 이 `1234` 로 돌아가고(CSV 로 받은 번호였어도), 잠금이 풀리고, PIN 버전이 올라가 **기존 토큰·연결이 모두 무효**(4001).
+
+**PIN 없이 학번만** (`settings.requirePin: false`, 명단 입장에서만 뜻이 있음):
+- `login` 에 `{ number }` 만 보낸다(`pin` 을 보내도 무시). 학생 화면은 받은 이름으로 "○○○ 맞나요?" 를 묻고 "네"면 토큰을 저장해 들어간다
+  (이 기기에서 전에 들어온 학생이면 묻지 않음). "아니에요"면 토큰을 버린다.
+- 학번별 잠금 없음. 없는 학번은 `invalid_credentials` "학번을 다시 확인해 주세요."(어느 학번이 있는지 알려 주지 않음)이고 IP 실패로 센다.
+- 이 토큰에는 `np: 1` 이 붙는다. **PIN 을 묻는 보드에서는 무효**(401) — 조작한 `login` 요청(`pin` 없음·빈 값)도 `invalid_credentials`.
+- 설정 바꾸기: PIN 묻기 → 학번만 = 아무도 안 끊김(PIN 으로 들어온 토큰은 그대로 유효). 학번만 → PIN 묻기 = `np` 연결만 4001 로 끊기고
+  그 토큰은 401, 학생은 학번 + PIN(처음엔 1234)으로 다시 들어온다. PIN 으로 들어온 연결은 그대로.
 
 ### 1.2 자유 입장
 
@@ -107,7 +124,7 @@
 
 | t | 언제 | 누구에게 |
 |---|---|---|
-| `snapshot` | 접속 직후, `sync`, 익명·열 구성·입장 방식 변경, 명단 변경(이름·학번·닉네임·모둠·구성원 — PIN 등록·초기화만 바뀐 것은 그 학생 연결만 4001 로 끊고 스냅숏은 안 보냄) | 각자 걸러서 |
+| `snapshot` | 접속 직후, `sync`, 익명·열 구성·입장 방식 변경, 명단 변경(이름·학번·닉네임·모둠·구성원 — PIN 바꾸기·초기화만 바뀐 것은 그 학생 연결만 4001 로 끊고 스냅숏은 안 보냄) | 각자 걸러서 |
 | `ack` / `error` | 쓰기 결과 | 보낸 사람 |
 | `post.upsert` | 카드 생성·수정·승인·숨김 해제·피드백 변경, 작성자 이름 변경 | 그 카드를 볼 수 있는 사람 |
 | `post.remove` | 삭제, 또는 그 사람이 더는 못 보게 됨(숨김, 학생 수정으로 승인 대기) | 전에 볼 수 있던 사람 |
@@ -127,7 +144,7 @@
 ```jsonc
 {
   "board": { "id": "b…", "code": "4821" },
-  "settings": { "title": "…", "type": "single", "columnMode": "student", "entryMode": "roster",
+  "settings": { "title": "…", "type": "single", "columnMode": "student", "entryMode": "roster", "requirePin": true,
                 "moderation": false, "locked": false, "anonymous": false,
                 "allowComments": true, "allowLikes": true, "maxFileMB": 25, "archived": false },
   "me": { "role": "student", "ref": "s:Ab12…", "name": "별빛", "realName": "박지우", "number": "20303", "nickname": "별빛", "group": "2모둠" },
@@ -195,10 +212,10 @@ WS `error.code` 와 REST `{ error: { code, message, retryAfterMs? } }` 가 같�
 | `invalid_upload` | 업로드 확인 토큰이 위조·만료·다른 보드·다른 사람 것 |
 | `invalid_settings` | 지금 상태와 안 맞는 설정 |
 | `empty_post` | 제목·내용·링크·첨부 모두 없음 |
-| `invalid_credentials` | 학번 또는 PIN 틀림 (어느 쪽인지 알려 주지 않음) |
+| `invalid_credentials` | 학번 또는 PIN 틀림 (어느 쪽인지 알려 주지 않음), PIN 바꾸기의 지금 PIN 틀림 |
 | `student_locked` / `too_many_attempts` | PIN 잠금 / IP 시도 제한·없는 입장코드 너무 많이 (`retryAfterMs`) |
-| `invalid_pin` | 새 PIN 규칙 위반 |
-| `wrong_entry_mode` | 명단 보드에 자유 입장 등 |
+| `invalid_pin` | 새 PIN 규칙 위반 (숫자 4자리 아님, `1234`) |
+| `wrong_entry_mode` | 명단 보드에 자유 입장, PIN 없는 보드에서 PIN 바꾸기 등 |
 | `duplicate` | 학번 중복 |
 | `class_in_use` | 보드가 쓰는 반 삭제 |
 | `internal` | 서버 문제 (다시 시도) |
@@ -208,7 +225,7 @@ WS `error.code` 와 REST `{ error: { code, message, retryAfterMs? } }` 가 같�
 | 종료 코드 | 뜻 | 클라이언트 |
 |---|---|---|
 | 1000/1001/1006 등 | 네트워크·서버 재시작 | **지수 백오프 재접속** (예: 0.5s → 1 → 2 → 4 … 최대 30s, ±30% 무작위) |
-| 4001 `reauth` | 토큰 무효 (PIN 초기화, 명단에서 빠짐, 입장 방식 변경) | 재접속 금지, 토큰 지우고 입장 화면 |
+| 4001 `reauth` | 토큰 무효 (PIN 초기화·바꾸기, 명단에서 빠짐, 입장 방식 변경, PIN 없이 들어왔는데 보드가 PIN 을 묻게 바뀜) | 재접속 금지, 토큰 지우고 입장 화면 |
 | 4003 `archived` | 보드 보관 | 재접속 금지, 안내 |
 | 4004 `deleted` | 보드 삭제 | 재접속 금지, 안내 |
 | 4008 `abuse` | 속도 제한 반복 위반 | 몇 초 뒤 재접속 |
@@ -223,9 +240,9 @@ WS `error.code` 와 REST `{ error: { code, message, retryAfterMs? } }` 가 같�
 
 | 메서드·경로 | 인증 | 요청 → 응답 |
 |---|---|---|
-| `GET /api/boards/:code` | 없음 | → `BoardPublicInfo { code, title, entryMode, locked, archived }` |
-| `POST /api/boards/:code/login` | 없음 | `{ number, pin }` → `LoginResponse` |
-| `POST /api/boards/:code/pin` | setupToken | `{ setupToken, newPin }` → `{ token, student }` |
+| `GET /api/boards/:code` | 없음 | → `BoardPublicInfo { code, title, entryMode, requirePin, locked, archived }` |
+| `POST /api/boards/:code/login` | 없음 | `{ number, pin }` (PIN 없는 보드는 `{ number }`) → `LoginResponse { status:"ok", token, student, defaultPin? }` |
+| `POST /api/boards/:code/pin` | Bearer | `{ currentPin, newPin }` → `{ token, student }` (나만의 PIN 으로 바꾸기, 예전 토큰 모두 무효) |
 | `POST /api/boards/:code/join` | 없음 | `{ nickname, deviceToken }` → `{ token, student }` |
 | `POST /api/boards/:code/nickname` | Bearer | `{ nickname }` → 명단: `{ student }` (반 전체 닉네임, 빈 값이면 실명 표시로) / 자유: `{ token, student }` (새 토큰으로 교체) |
 | `GET /api/boards/:code/me` | Bearer | → `{ student }` 또는 401/403 (토큰 상태 확인용) |
@@ -238,10 +255,15 @@ WS `error.code` 와 REST `{ error: { code, message, retryAfterMs? } }` 가 같�
 
 ```http
 POST /api/boards/4821/login
-{"number":"20301","pin":"4821"}
-→ 200 {"status":"pin_setup","setupToken":"eyJ…","student":{"ref":"s:Ab12…","name":"김하나","realName":"김하나","number":"20301","nickname":""}}
+{"number":"20301","pin":"1234"}
+→ 200 {"status":"ok","token":"eyJ…","defaultPin":true,"student":{"ref":"s:Ab12…","name":"김하나","realName":"김하나","number":"20301","nickname":""}}
 → 401 {"error":{"code":"invalid_credentials","message":"학번 또는 PIN을 다시 확인해 주세요."}}
-→ 429 {"error":{"code":"student_locked","message":"PIN을 5번 틀렸어요. 5분 뒤에 다시 해 주세요.","retryAfterMs":300000}}
+→ 429 {"error":{"code":"student_locked","message":"PIN을 5번 틀려서 잠깐 잠겼어요. 5분쯤 뒤에 다시 하거나 선생님께 말해 주세요.","retryAfterMs":300000}}
+
+POST /api/boards/4821/pin   (Authorization: Bearer eyJ…)
+{"currentPin":"1234","newPin":"2580"}
+→ 200 {"token":"eyJ…(새 토큰)","student":{…}}
+→ 400 {"error":{"code":"invalid_pin","message":"1234는 모두가 아는 처음 번호라서 쓸 수 없어요. 다른 숫자로 정해 주세요."}}
 ```
 
 ## 9. REST — 교사 관리 (`/api/teacher/*`, 교사 쿠키 필수, 쓰기는 같은 출처만)
@@ -249,7 +271,7 @@ POST /api/boards/4821/login
 | 메서드·경로 | 요청 → 응답 |
 |---|---|
 | `GET /api/teacher/boards?archived=0\|1\|all` | → `{ boards: BoardSummary[] }` (기본: 보관 안 된 것) |
-| `POST /api/teacher/boards` | `CreateBoardRequest { title, classId?, type?, columnMode?, entryMode?, moderation?, locked?, anonymous?, allowComments?, allowLikes?, maxFileMB?, description? }` → 201 `BoardDetail` |
+| `POST /api/teacher/boards` | `CreateBoardRequest { title, classId?, type?, columnMode?, entryMode?, requirePin?, moderation?, locked?, anonymous?, allowComments?, allowLikes?, maxFileMB?, description? }` → 201 `BoardDetail` |
 | `GET /api/teacher/boards/:id` | → `BoardDetail` (요약 + 설정 + 백업 상태) |
 | `PATCH /api/teacher/boards/:id` | `BoardSettingsPatch` (이름 바꾸기 포함) → `BoardDetail`. 웹소켓 `settings.update` 와 같은 처리 |
 | `POST /api/teacher/boards/:id/archive` · `/unarchive` | → `BoardDetail` |
@@ -260,15 +282,18 @@ POST /api/boards/4821/login
 | `POST /api/teacher/classes` | `{ name, students?: StudentRowInput[] }` → 201 `{ class, students }` |
 | `PATCH /api/teacher/classes/:id` | `{ name }` → `{ class }` |
 | `DELETE /api/teacher/classes/:id` | → 204 (보드가 쓰면 409 `class_in_use`) |
-| `GET /api/teacher/classes/:id/students` | → `{ students: TeacherStudent[] }` (학번순, 등록 전이면 `initialPin`) |
+| `GET /api/teacher/classes/:id/students` | → `{ students: TeacherStudent[] }` (학번순. 안 바꿨으면 `initialPin` = 처음 PIN(1234 또는 CSV 번호), 바꿨으면 `pinRegistered: true`·`initialPin: null` — 바꾼 PIN 은 어떤 응답에도 없음) |
 | `POST /api/teacher/classes/:id/students` | `{ students: StudentRowInput[] }` → 201 `{ added }` (CSV 파싱 결과. 한 줄이라도 틀리면 "N번째 줄: …" 오류로 아무것도 안 넣음) |
 | `PATCH /api/teacher/students/:id` | `{ number?, name?, group?, nickname? }` → `{ student }` |
 | `DELETE /api/teacher/students/:id` | → 204 (그 학생 연결은 4001 로 끊김, 카드는 남음) |
-| `POST /api/teacher/students/:id/reset-pin` | → `{ student }` (새 `initialPin`) |
+| `POST /api/teacher/students/:id/reset-pin` | → `{ student }` (`initialPin: "1234"`, 잠금 해제, 그 학생 토큰 무효) |
 | `POST /api/teacher/students/:id/unlock` | → `{ student }` (5회 실패 잠금 해제) |
 | `GET /api/teacher/students/:id/portfolio` | → `PortfolioResponse` (그 반에 연결된 보드들의 그 학생 카드, 교사 보기) |
 
-명단 CSV 열(프런트가 파싱): `학번,이름,PIN,모둠,닉네임` — 학번·이름 필수, 나머지 선택. PIN 이 비면 무작위.
+명단 CSV 열(프런트가 파싱): `학번,이름,PIN,모둠,닉네임` — 학번·이름 필수, 나머지 선택. PIN 이 비면 처음 PIN 은 `1234`, 적으면 그 학생의 처음 PIN.
+
+Registry 마이그레이션 3·4 (업데이트한 설치): `boards.require_pin`(기존 보드 1 = PIN 묻기), 아직 PIN 을 안 바꾼 학생(`pin_hash` 없음)의 처음 PIN 을 모두 `1234` 로
+(예전 데이터는 무작위와 CSV 번호를 구별할 수 없어 둘 다). 나만의 PIN 을 정한 학생은 그대로.
 
 Drive 관련 경로(업로드, 파일 보기, 시트 내보내기, `GET /api/boards/:code/drive`)는 태스크3 문서/타입(`src/shared/files.ts`) 참고.
 `GET /api/boards/:code/drive` 의 `backup.status` 는 이 보드 DO 의 백업 상태(`getDriveState().backupError/backupPending/lastBackupAt`)에서 나온다.

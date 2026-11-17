@@ -9,7 +9,7 @@
  *     4칸 이상: 학번, 이름, PIN, 모둠, 닉네임 (PROTOCOL §9 의 CSV 순서)
  * - 서버 규칙(src/worker/registry/roster.ts validateRows)과 같은 검사를 미리 해서 줄마다 오류를 보여 준다.
  */
-import { LIMITS, type StudentRowInput, type TeacherStudent } from "../../src/shared/protocol";
+import { DEFAULT_PIN, LIMITS, type StudentRowInput, type TeacherStudent } from "../../src/shared/protocol";
 
 export type RosterField = "number" | "name" | "pin" | "group" | "nickname";
 
@@ -195,7 +195,7 @@ export function parseRoster(text: string, opts: ParseOptions = {}): RosterParseR
         const padded = pin.padStart(4, "0");
         notes.push(`PIN 앞의 0이 빠진 것 같아 ${padded}(으)로 맞췄어요.`);
         pin = padded;
-      } else if (!/^\d{4}$/.test(pin)) errors.push("PIN은 숫자 4자리로 써 주세요. 비워 두면 자동으로 만들어요.");
+      } else if (!/^\d{4}$/.test(pin)) errors.push(`PIN은 숫자 4자리로 써 주세요. 비워 두면 처음 번호 ${DEFAULT_PIN}가 돼요.`);
     }
     if (group.length > LIMITS.groupName) errors.push(`모둠 이름은 ${LIMITS.groupName}자까지 쓸 수 있어요.`);
     if (nickname.length > LIMITS.nickname) errors.push(`닉네임은 ${LIMITS.nickname}자까지 쓸 수 있어요.`);
@@ -249,12 +249,18 @@ export function compareNumber(a: { number: string }, b: { number: string }): num
   return a.number.localeCompare(b.number, "ko", { numeric: true });
 }
 
-/** 명단 + PIN CSV (등록한 학생의 PIN 은 서버도 모름 → 빈칸 + 상태) */
+/** 명단 표의 PIN 칸: "1234 (처음 번호)" | "바꿈" (학생이 바꾼 PIN 은 서버도 모름 → 절대 안 보임) */
+export function pinStatusText(s: Pick<TeacherStudent, "pinRegistered" | "initialPin">): string {
+  if (s.pinRegistered) return "바꿈";
+  return `${s.initialPin ?? DEFAULT_PIN} (처음 번호)`;
+}
+
+/** 명단 + PIN CSV (학생이 바꾼 PIN 은 서버도 모름 → 빈칸 + 상태) */
 export function rosterCsv(students: TeacherStudent[]): string {
   const sorted = [...students].sort(compareNumber);
   return toCsv([
-    ["학번", "이름", "모둠", "닉네임", "초기 PIN", "PIN 상태"],
-    ...sorted.map((s) => [s.number, s.name, s.group, s.nickname, s.initialPin ?? "", s.pinRegistered ? "학생이 직접 정함" : "처음 입장 전"]),
+    ["학번", "이름", "모둠", "닉네임", "처음 PIN", "PIN 상태"],
+    ...sorted.map((s) => [s.number, s.name, s.group, s.nickname, s.pinRegistered ? "" : (s.initialPin ?? ""), s.pinRegistered ? "학생이 바꿈" : "처음 번호 그대로"]),
   ]);
 }
 

@@ -13,6 +13,8 @@ export interface BoardRow {
   type: BoardType;
   column_mode: ColumnMode;
   entry_mode: EntryMode;
+  /** 명단 입장에서 PIN 을 묻는지 (1/0, 마이그레이션 3) */
+  require_pin: number;
   class_id: string | null;
   locked: number;
   archived: number;
@@ -32,6 +34,7 @@ export interface BoardRecord {
   type: BoardType;
   columnMode: ColumnMode;
   entryMode: EntryMode;
+  requirePin: boolean;
   classId: string | null;
   locked: boolean;
   archived: boolean;
@@ -47,10 +50,11 @@ export interface ResolvedBoard {
   title: string;
   archived: boolean;
   entryMode: EntryMode;
+  requirePin: boolean;
   locked: boolean;
 }
 
-export type BoardMetaPatch = Partial<Pick<BoardRecord, "title" | "type" | "columnMode" | "entryMode" | "classId" | "locked" | "archived">>;
+export type BoardMetaPatch = Partial<Pick<BoardRecord, "title" | "type" | "columnMode" | "entryMode" | "requirePin" | "classId" | "locked" | "archived">>;
 
 /** Board DO 가 알람 때 보내는 통계 + 최근 글 (교사 대시보드용) */
 export interface BoardStats {
@@ -69,6 +73,7 @@ export function toRecord(r: BoardRow): BoardRecord {
     type: r.type,
     columnMode: r.column_mode,
     entryMode: r.entry_mode,
+    requirePin: r.require_pin !== 0,
     classId: r.class_id,
     locked: r.locked === 1,
     archived: r.archived === 1,
@@ -128,6 +133,7 @@ export interface CreateBoardInput {
   type: BoardType;
   columnMode: ColumnMode;
   entryMode: EntryMode;
+  requirePin: boolean;
   classId: string | null;
   locked: boolean;
 }
@@ -140,9 +146,9 @@ export function insertBoard(sql: SqlStorage, input: CreateBoardInput, now: numbe
   const code = pickBoardCode((c) => getBoardRowByCode(sql, c) !== null);
   if (code) {
     sql.exec(
-      `INSERT INTO boards (id, code, title, type, column_mode, entry_mode, class_id, locked, archived, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-      id, code, input.title, input.type, input.columnMode, input.entryMode, input.classId, input.locked ? 1 : 0, now, now,
+      `INSERT INTO boards (id, code, title, type, column_mode, entry_mode, require_pin, class_id, locked, archived, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+      id, code, input.title, input.type, input.columnMode, input.entryMode, input.requirePin ? 1 : 0, input.classId, input.locked ? 1 : 0, now, now,
     );
     return toRecord(getBoardRow(sql, id)!);
   }
@@ -157,8 +163,8 @@ export function updateBoardRow(sql: SqlStorage, id: string, patch: BoardMetaPatc
   }
   const next = { ...toRecord(cur), ...patch };
   sql.exec(
-    `UPDATE boards SET title = ?, type = ?, column_mode = ?, entry_mode = ?, class_id = ?, locked = ?, archived = ?, updated_at = ? WHERE id = ?`,
-    next.title, next.type, next.columnMode, next.entryMode, next.classId, next.locked ? 1 : 0, next.archived ? 1 : 0, now, id,
+    `UPDATE boards SET title = ?, type = ?, column_mode = ?, entry_mode = ?, require_pin = ?, class_id = ?, locked = ?, archived = ?, updated_at = ? WHERE id = ?`,
+    next.title, next.type, next.columnMode, next.entryMode, next.requirePin ? 1 : 0, next.classId, next.locked ? 1 : 0, next.archived ? 1 : 0, now, id,
   );
   return toRecord(getBoardRow(sql, id)!);
 }
@@ -192,6 +198,7 @@ function toSummary(r: BoardRow, className: string | null): BoardSummary {
     type: rec.type,
     columnMode: rec.columnMode,
     entryMode: rec.entryMode,
+    requirePin: rec.requirePin,
     locked: rec.locked,
     archived: rec.archived,
     classId: rec.classId,

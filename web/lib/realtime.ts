@@ -125,6 +125,8 @@ export class BoardConnection {
   private pongTimer: ReturnType<typeof setTimeout> | null = null;
   private notifyQueued = false;
   private stopped = false;
+  /** withTokenChange 동안: 새로 연결하지 않는다 */
+  private suspended = false;
   private gotSnapshot = false;
   private detach: (() => void) | null = null;
 
@@ -184,6 +186,40 @@ export class BoardConnection {
     this.open();
   }
 
+  /**
+   * 토큰을 바꾸는 요청(예: PIN 바꾸기)을 하는 동안 연결을 잠시 멈춘다.
+   * 서버는 예전 토큰의 연결을 4001 로 끊는데, 그걸 받으면 입장 화면으로 가 버리므로 먼저 조용히 닫아 둔다.
+   * fn 이 끝나면(실패해도) 그때의 토큰으로 바로 다시 연결한다. 그 사이 쓰기는 대기열에 남는다.
+   */
+  async withTokenChange<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.stopped) return fn();
+    this.suspended = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    const ws = this.ws;
+    this.ws = null;
+    this.stopPing();
+    this.gotSnapshot = false;
+    if (ws) {
+      ws.onclose = ws.onmessage = ws.onerror = ws.onopen = null;
+      try {
+        ws.close(1000);
+      } catch {
+        /* 무시 */
+      }
+    }
+    this.setStatus("reconnecting");
+    try {
+      return await fn();
+    } finally {
+      this.suspended = false;
+      this.attempt = 0;
+      this.open();
+    }
+  }
+
   /** 스냅숏을 다시 받는다 */
   sync(): void {
     if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify({ t: "sync" }));
@@ -219,7 +255,7 @@ export class BoardConnection {
   // ───────── 연결 ─────────
 
   private open(): void {
-    if (this.stopped) return;
+    if (this.stopped || this.suspended) return;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

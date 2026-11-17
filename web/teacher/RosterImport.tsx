@@ -1,6 +1,6 @@
 /** 명단 넣기: 붙여넣기 또는 CSV 파일 → 미리보기(줄마다 오류) → 저장 */
 import { useMemo, useState } from "preact/hooks";
-import type { StudentRowInput } from "../../src/shared/protocol";
+import { DEFAULT_PIN, type StudentRowInput } from "../../src/shared/protocol";
 import { parseRoster, sampleRosterCsv, type RosterField } from "./roster";
 import { downloadText } from "./ui";
 
@@ -53,7 +53,7 @@ export function RosterImport(props: { existingNumbers?: string[]; onChange: (val
             update(e.currentTarget.value);
           }}
         />
-        <p class="hint">한 줄에 한 명. 학번과 이름은 꼭 필요하고, PIN·모둠·닉네임은 없어도 돼요. PIN을 비우면 자동으로 4자리를 만들어요.</p>
+        <p class="hint">한 줄에 한 명. 학번과 이름은 꼭 필요하고, PIN·모둠·닉네임은 없어도 돼요. PIN을 비우면 처음 PIN은 {DEFAULT_PIN}예요. 학생마다 다른 처음 PIN을 주고 싶을 때만 적어요.</p>
       </div>
       <div class="row">
         <label class="btn btn-small t-file">
@@ -117,7 +117,7 @@ export function RosterImport(props: { existingNumbers?: string[]; onChange: (val
                       <td>{r.line}</td>
                       <td>{r.number || "—"}</td>
                       <td>{r.name || "—"}</td>
-                      <td>{r.pin || <span class="hint">자동</span>}</td>
+                      <td>{r.pin || <span class="hint">{DEFAULT_PIN}</span>}</td>
                       <td>{r.group || "—"}</td>
                       <td>
                         {r.errors.length ? (

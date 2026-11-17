@@ -3,10 +3,10 @@
  *
  * PIN 저장 (DESIGN §10): HMAC-SHA256(PIN 전용 서버 비밀키, 학생별 salt + ":" + PIN).
  * 4자리 PIN 의 안전은 시도 제한(학번당 5회 → 5분 잠금, IP 당 분당 실패 제한)이 책임진다.
- * 초기 PIN(교사가 정하거나 서버가 무작위로 만든 값)은 학생이 나만의 PIN 을 정할 때까지만 평문으로 둔다
- * (PIN 쪽지 인쇄용). 등록 후에는 해시만 남는다.
+ * 처음 PIN 은 모두 같은 DEFAULT_PIN(1234), 교사가 명단 CSV 에 PIN 을 적었으면 그 번호다. 학생이 나만의 PIN 으로
+ * 바꿀 때까지만 평문(initial_pin)으로 두고(교사 화면·PIN 쪽지용), 바꾼 뒤에는 해시(pin_hash)만 남는다.
  */
-import { LIMITS, type ClassSummary, type StudentRowInput, type TeacherStudent } from "../../shared/protocol";
+import { DEFAULT_PIN, LIMITS, type ClassSummary, type StudentRowInput, type TeacherStudent } from "../../shared/protocol";
 import { base64UrlEncode, randomToken, timingSafeEqualStr } from "../auth/token";
 import { fail, isPlainObject, line, pin as pinValue, studentNumber, ValidationError } from "../board/validate";
 
@@ -70,11 +70,6 @@ export function toTeacherStudent(r: StudentRow, now = Date.now()): TeacherStuden
 
 export function toRosterMember(r: StudentRow): RosterMember {
   return { ref: studentRef(r.id), number: r.number, name: r.name, nickname: r.nickname, group: r.group_name, pinVersion: r.pin_version };
-}
-
-export function randomPin(): string {
-  const n = crypto.getRandomValues(new Uint32Array(1))[0]! % 10000;
-  return String(n).padStart(4, "0");
 }
 
 // ───── 반 ─────
@@ -145,7 +140,7 @@ export function validateRows(rows: unknown, existingNumbers: Set<string>): Clean
       const name = line(r.name, LIMITS.studentName, "이름", true);
       const group = line(r.group, LIMITS.groupName, "모둠");
       const nickname = line(r.nickname, LIMITS.nickname, "닉네임");
-      const p = r.pin === undefined || r.pin === null || r.pin === "" ? randomPin() : pinValue(r.pin, "PIN");
+      const p = r.pin === undefined || r.pin === null || r.pin === "" ? DEFAULT_PIN : pinValue(r.pin, "PIN");
       if (seen.has(number)) fail("duplicate", `학번 ${number} 이(가) 이미 있어요.`, 409);
       seen.add(number);
       return { number, name, pin: p, group, nickname };

@@ -8,7 +8,7 @@
 - **자가설치형**: 교사 한 명이 자기 Cloudflare 계정에 한 벌을 설치한다. 인스턴스 하나 = 교사(소유자) 한 명.
 - **빠름이 최우선**: 글·댓글·좋아요는 웹소켓으로 즉시 반영. 화면 전체 재조회 금지.
 - **업로드 자료는 교사의 Google Drive에**: 첨부파일은 Drive가 원본. 글(텍스트)은 Durable Object가 작업본, Drive에 자동 백업.
-- **학생은 로그인 없음**: 입장코드 + (학번·PIN | 닉네임).
+- **학생은 로그인 없음**: 입장코드 + (학번·PIN | 학번만 | 닉네임).
 - **무료 요금제에서 동작**: Cloudflare Workers Free + SQLite 기반 Durable Objects. 유료 전용 기능(R2, KV 필수 의존 등) 금지.
 - 한 보드 동시 접속 50명 기준.
 - UI 문구는 전부 한국어, 초등~교사 모두 읽기 쉬운 말.
@@ -67,7 +67,14 @@ docs/                      문서
 - 코드 짐작 막기: 공개 조회(`GET /api/boards/{코드}`, `login`, `join`)에서 **없는 코드**만 IP 별로 센다. 1분에 60번 틀리면 그 1분이 끝날 때까지
   그 IP 의 코드 조회가 모두 429(`too_many_attempts`, 있는 코드인지도 알려 주지 않음). 있는 코드 조회는 세지 않으므로 한 반이 학교 NAT 한 IP 로 들어와도 막히지 않는다.
   없는 코드의 답은 언제나 같은 404 "입장코드를 다시 확인해 주세요."
-- **명단 모드**: 학번 + PIN 4자리. PIN은 PBKDF2 해시 저장. 실패 5회 → 해당 학번 5분 잠금, IP당 분당 시도 제한.
+- **명단 모드**: 학번 + PIN 4자리. 실패 5회 → 해당 학번 5분 잠금, IP당 분당 시도 제한. (PIN 저장 방식은 §10)
+  - 처음 PIN 은 모두 `1234`(`DEFAULT_PIN`). 명단 CSV 에 PIN 을 적으면 그 학생은 그 번호로 시작. 처음 PIN 으로 바로 들어가고(강제 변경 없음)
+    `1234` 로 들어오면 바꾸자는 안내만 띄운다. 학생은 보드의 "내 정보"에서 지금 PIN + 새 PIN 으로 바꾼다(새 PIN `1234` 금지, 지금 PIN 확인도 같은 실패 제한).
+    바꾸면 PIN 버전이 올라 그 학생의 다른 입장(친구가 1234 로 들어와 있던 것 포함)이 모두 끝나고, 바꾼 기기는 새 토큰을 받는다.
+    교사 PIN 초기화 → `1234`. 교사 화면에는 처음 PIN 만 보이고 바꾼 PIN 은 "바꿈"(서버에는 해시만).
+  - 보드 설정 `requirePin=false`: **PIN 없이 학번만**. 학번 → 이름 확인 → 입장. 잠금 없음, 없는 학번은 IP 실패로 센다.
+    이렇게 받은 토큰에는 `np` 표시가 붙고, PIN 을 묻는 보드에서는 무효. 설정을 PIN 있음 → 없음으로 바꾸면 기존 연결 유지,
+    없음 → 있음으로 바꾸면 PIN 없이 들어온 연결만 4001 로 끊는다.
 - **자유 입장 모드**: 닉네임만. 기기별 무작위 토큰으로 본인 카드 식별.
 - 학생 토큰: HMAC 서명, 보드 범위 한정. localStorage 보관.
 
@@ -75,11 +82,11 @@ docs/                      문서
 
 Registry DO (SQLite):
 - `owner(sub, email, refresh_token, drive_root_id)`
-- `boards(id, code, title, type, column_mode, entry_mode, archived, created_at, drive_folder_id)`
-- `students(id, class_id, number, name, pin_hash, pin_failed, locked_until)`, `classes(id, name)` — 명단은 반 단위로 관리하고 보드에 연결. 기존 탭보드의 명단 의미(학번·이름·PIN·닉네임)를 따른다.
+- `boards(id, code, title, type, column_mode, entry_mode, require_pin, archived, created_at, drive_folder_id)`
+- `students(id, class_id, number, name, pin_hash, initial_pin, pin_version, pin_failed, locked_until)` — `initial_pin` 은 학생이 바꾸기 전 처음 PIN(평문, 보통 1234), 바꾸면 NULL·`pin_hash` 만, `classes(id, name)` — 명단은 반 단위로 관리하고 보드에 연결. 기존 탭보드의 명단 의미(학번·이름·PIN·닉네임)를 따른다.
 
 Board DO (SQLite):
-- `settings` — 보드 설정 사본: 유형(학생당 1카드 | 누적), 열 구성(개인별 | 모둠별 | 주제별), 입장 모드(명단 | 자유), 승인 후 게시, 잠금, 익명 모드, 좋아요·댓글 허용.
+- `settings` — 보드 설정 사본: 유형(학생당 1카드 | 누적), 열 구성(개인별 | 모둠별 | 주제별), 입장 모드(명단 | 자유), 명단 입장 PIN 묻기(requirePin), 승인 후 게시, 잠금, 익명 모드, 좋아요·댓글 허용.
 - `columns(id, title, kind, owner_ref, position)`
 - `posts(id, column_id, author_ref, author_name, title, body, link, status[visible|pending|hidden], created_at, updated_at)`
 - `attachments(id, post_id, drive_file_id, name, mime, size, kind[image|file], width, height)`
@@ -110,7 +117,7 @@ Board DO (SQLite):
 
 ## 8. 기능 범위 (1차)
 
-유지: 카드(글·사진·첨부·링크), 댓글, 좋아요, 교사 피드백, 공지, 닉네임 변경, 개인별·모둠별 열, 보드 유형 2종, 명단 CSV 가져오기/예시, PIN 등록·초기화·PIN 쪽지 인쇄, QR·링크 공유, 프로젝터 보기, 학생 포트폴리오, 시트 내보내기, 보관함, 보드 이름 변경·설정, 학생용 휴대폰 화면.
+유지: 카드(글·사진·첨부·링크), 댓글, 좋아요, 교사 피드백, 공지, 닉네임·PIN 변경(학생 "내 정보"), 개인별·모둠별 열, 보드 유형 2종, 명단 CSV 가져오기/예시, PIN 초기화(→1234)·PIN 쪽지 인쇄, QR·링크 공유, 프로젝터 보기, 학생 포트폴리오, 시트 내보내기, 보관함, 보드 이름 변경·설정, 학생용 휴대폰 화면.
 
 신규: 자유 입장 모드, 주제별 열, 승인 후 게시·카드 숨김, 보드 잠금, 미제출자 표시(명단 모드), 익명 모드.
 

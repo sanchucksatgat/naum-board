@@ -188,3 +188,19 @@
 .board-projector .notice-title { font-size: var(--fs-xl); }
 .board-projector .bcard-img-btn { cursor: zoom-in; }
 .topbar-lock { flex: none; font-weight: 700; }
+
+/* 처음 PIN 안내 (닫을 수 있음) */
+.pin-nudge { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); background: var(--c-primary-soft); color: var(--c-text); }
+.pin-nudge-text { flex: 1 1 200px; min-width: 0; }
+.pin-nudge-actions { display: flex; gap: var(--sp-1); margin-left: auto; }
+
+/* 학생 "내 정보" */
+.myinfo-who { margin: 0; }
+.myinfo-section { padding-top: var(--sp-3); border-top: 1px solid var(--c-line); }
+.myinfo-section:first-of-type { border-top: 0; padding-top: 0; }
+.myinfo-head { margin: 0; font-size: var(--fs-m); }
+.myinfo-pin { letter-spacing: .4em; font-weight: 700; }
+.myinfo-pin-row { display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+.myinfo-btn { justify-self: start; }
+.myinfo-warn { margin: 0; color: var(--c-warn); }
+.myinfo-done { margin: 0; font-weight: 600; color: var(--c-primary-strong); }

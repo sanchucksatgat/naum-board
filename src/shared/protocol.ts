@@ -16,8 +16,14 @@
 export type BoardType = "single" | "cumulative";
 /** 열 구성: 개인별 | 모둠별 | 주제별 */
 export type ColumnMode = "student" | "group" | "topic";
-/** 입장 방식: 명단(학번+PIN) | 자유(닉네임) */
+/** 입장 방식: 명단(학번+PIN, 또는 보드 설정에 따라 학번만) | 자유(닉네임) */
 export type EntryMode = "roster" | "free";
+
+/**
+ * 명단 학생의 처음 PIN (모두 같은 번호). 교사가 명단 CSV 에 PIN 을 따로 적으면 그 학생은 그 번호로 시작한다.
+ * 학생은 보드의 "내 정보"에서 나만의 PIN 으로 바꿀 수 있고, 바꾼 PIN 으로 이 번호는 다시 쓸 수 없다.
+ */
+export const DEFAULT_PIN = "1234";
 export type Role = "teacher" | "student";
 export type PostStatus = "visible" | "pending" | "hidden";
 export type AttachmentKind = "image" | "file";
@@ -110,6 +116,11 @@ export interface BoardSettings {
   type: BoardType;
   columnMode: ColumnMode;
   entryMode: EntryMode;
+  /**
+   * 명단 입장에서 PIN 을 묻는지 (기본 true). false 면 학번만 쓰고 이름을 확인한 뒤 들어온다 (PIN·잠금 없음).
+   * 자유 입장에서는 쓰지 않는다.
+   */
+  requirePin: boolean;
   /** 승인 후 게시: 학생 카드는 pending 으로 들어가고 교사가 승인해야 모두에게 보임 */
   moderation: boolean;
   /** 잠금: 학생은 아무것도 쓸 수 없음 (읽기만) */
@@ -390,6 +401,8 @@ export interface BoardPublicInfo {
   code: string;
   title: string;
   entryMode: EntryMode;
+  /** 명단 입장에서 PIN 을 묻는지 (false 면 학번만) */
+  requirePin: boolean;
   locked: boolean;
   archived: boolean;
 }
@@ -404,19 +417,23 @@ export interface StudentInfo {
   group?: string;
 }
 
-/** POST /api/boards/:code/login (명단 모드) */
+/** POST /api/boards/:code/login (명단 모드). PIN 없이 들어오는 보드(requirePin: false)면 pin 은 보내지 않는다(보내도 무시) */
 export interface LoginRequest {
   number: string;
-  pin: string;
+  pin?: string;
 }
-export type LoginResponse =
-  | { status: "ok"; token: string; student: StudentInfo }
-  /** 처음 입장: 초기 PIN 이 맞음 → 나만의 PIN 을 정해야 함 (POST /pin) */
-  | { status: "pin_setup"; setupToken: string; student: StudentInfo };
+export interface LoginResponse {
+  status: "ok";
+  token: string;
+  student: StudentInfo;
+  /** 아직 모두 같은 처음 번호(DEFAULT_PIN)로 들어왔음 → 나만의 PIN 으로 바꾸자고 살짝 권한다 (강제 아님) */
+  defaultPin?: boolean;
+}
 
-/** POST /api/boards/:code/pin */
-export interface SetPinRequest {
-  setupToken: string;
+/** POST /api/boards/:code/pin (Bearer 학생 토큰, PIN 을 묻는 명단 보드만) — 나만의 PIN 으로 바꾸기 */
+export interface ChangePinRequest {
+  currentPin: string;
+  /** 숫자 4자리, DEFAULT_PIN 은 안 됨 */
   newPin: string;
 }
 export interface TokenResponse {
@@ -449,6 +466,8 @@ export interface BoardSummary {
   type: BoardType;
   columnMode: ColumnMode;
   entryMode: EntryMode;
+  /** 명단 입장에서 PIN 을 묻는지 */
+  requirePin: boolean;
   locked: boolean;
   archived: boolean;
   classId: string | null;
@@ -498,15 +517,18 @@ export interface TeacherStudent {
   name: string;
   nickname: string;
   group: string;
-  /** 학생이 나만의 PIN 을 정했는지 */
+  /** 학생이 나만의 PIN 으로 바꿨는지 */
   pinRegistered: boolean;
-  /** 아직 등록 전이면 초기 PIN (PIN 쪽지 인쇄용). 등록 후에는 null (서버도 모름) */
+  /**
+   * 아직 안 바꿨으면 처음 PIN: 보통 DEFAULT_PIN, 명단 CSV 에 PIN 을 적었으면 그 번호 (PIN 쪽지 인쇄용).
+   * 학생이 바꾼 뒤에는 null (서버에는 해시만 있어 아무도 모름)
+   */
   initialPin: string | null;
   /** 5회 실패 잠금 해제 시각 (지금보다 미래면 잠김) */
   lockedUntil: number | null;
 }
 
-/** 명단 CSV 한 줄을 파싱한 값 (학번,이름,PIN,모둠,닉네임). PIN 이 비면 서버가 무작위 4자리 초기 PIN 을 만든다 */
+/** 명단 CSV 한 줄을 파싱한 값 (학번,이름,PIN,모둠,닉네임). PIN 이 비면 처음 PIN 은 DEFAULT_PIN(1234) */
 export interface StudentRowInput {
   number: string;
   name: string;

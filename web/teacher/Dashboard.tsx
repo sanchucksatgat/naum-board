@@ -119,6 +119,7 @@ function BoardCard(props: { board: BoardSummary; onShare: () => void }) {
         <span class="chip">{TYPE_LABEL[b.type]}</span>
         <span class="chip">{COLUMN_LABEL[b.columnMode]}</span>
         <span class="chip">{b.entryMode === "roster" ? (b.className ?? "반 미연결") : ENTRY_LABEL.free}</span>
+        {b.entryMode === "roster" && !b.requirePin && <span class="chip">PIN 없음</span>}
       </div>
       <p class="hint t-board-meta">
         글 {b.postCount}개 · 마지막 글 {relativeTime(b.lastPostAt)}

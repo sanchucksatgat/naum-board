@@ -162,7 +162,7 @@ const sig = (v) => JSON.stringify(Object.keys(v).sort().map((k) => [k, v[k]]));
   const code = board.body.code;
   ok("반 50명 + 보드 만들기 (입장 코드 숫자 4자리)", cls.status === 201 && board.status === 201 && /^[0-9]{4}$/.test(code), code);
 
-  // ── 같은 IP(NAT) 에서 50명이 1분 안에 처음 입장 (PIN 등록), 그중 10명은 한 번씩 틀림 ──
+  // ── 같은 IP(NAT) 에서 50명이 1분 안에 처음 입장 (+ 나만의 PIN 으로 바꾸기), 그중 10명은 한 번씩 틀림 ──
   const t0 = performance.now();
   let throttled = 0;
   const tokens = await Promise.all(
@@ -177,7 +177,12 @@ const sig = (v) => JSON.stringify(Object.keys(v).sort().map((k) => [k, v[k]]));
         if (r.status === 429) throttled++;
         throw new Error(`login ${s.number} ${r.status} ${JSON.stringify(r.body)}`);
       }
-      const p = await http(`/api/boards/${code}/pin`, { method: "POST", body: JSON.stringify({ setupToken: r.body.setupToken, newPin: String(6000 + i) }) });
+      // 처음 PIN 으로 바로 들어가지만, 부하 시험에서는 모두 나만의 PIN 으로 바꿔 본다 (명단 사본 갱신까지)
+      const p = await http(`/api/boards/${code}/pin`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${r.body.token}` },
+        body: JSON.stringify({ currentPin: s.pin, newPin: String(6000 + i) }),
+      });
       if (p.status !== 200) throw new Error(`pin ${s.number} ${p.status}`);
       return p.body.token;
     }),

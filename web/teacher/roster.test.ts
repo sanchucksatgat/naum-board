@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import jsQR from "jsqr";
-import { csvCell, detectDelimiter, paginate, parseDelimited, parseRoster, rosterCsv, safeFileName, sampleRosterCsv, toCsv } from "./roster";
-import { backupText, matchesBoard, parseTopics, relativeTime, sortBoards, spacedCode, studentUrl } from "./format";
+import { csvCell, detectDelimiter, paginate, parseDelimited, parseRoster, pinStatusText, rosterCsv, safeFileName, sampleRosterCsv, toCsv } from "./roster";
+import { backupText, entryStepText, entryText, matchesBoard, parseTopics, relativeTime, sortBoards, spacedCode, studentUrl } from "./format";
 import { qrMatrix, qrPath } from "./qr";
 import type { TeacherStudent } from "../../src/shared/protocol";
 
@@ -126,14 +126,25 @@ describe("CSV 만들기", () => {
     expect(csvCell('a"b')).toBe(`"a""b"`);
     expect(toCsv([["a", 1]])).toBe('﻿"a","1"\r\n');
   });
-  it("명단 CSV: 학번순, 등록한 학생은 PIN 빈칸", () => {
+  it("명단 CSV: 학번순, PIN 을 바꾼 학생은 PIN 빈칸", () => {
     const s = (number: string, initialPin: string | null): TeacherStudent => ({
       id: number, classId: "c", ref: "s:" + number, number, name: "이름" + number, nickname: "", group: "", pinRegistered: initialPin === null, initialPin, lockedUntil: null,
     });
     const csv = rosterCsv([s("10", null), s("2", "0420")]);
     const rows = parseDelimited(csv, ",");
-    expect(rows[1]).toEqual(["2", "이름2", "", "", "0420", "처음 입장 전"]);
-    expect(rows[2]).toEqual(["10", "이름10", "", "", "", "학생이 직접 정함"]);
+    expect(rows[1]).toEqual(["2", "이름2", "", "", "0420", "처음 번호 그대로"]);
+    expect(rows[2]).toEqual(["10", "이름10", "", "", "", "학생이 바꿈"]);
+  });
+  it("명단 표 PIN 칸: 처음 번호는 보이고, 학생이 바꾼 PIN 은 '바꿈'만", () => {
+    expect(pinStatusText({ pinRegistered: false, initialPin: "1234" })).toBe("1234 (처음 번호)");
+    expect(pinStatusText({ pinRegistered: false, initialPin: "5813" })).toBe("5813 (처음 번호)");
+    expect(pinStatusText({ pinRegistered: true, initialPin: null })).toBe("바꿈");
+  });
+  it("입장 방식 문구", () => {
+    expect(entryText({ entryMode: "roster", requirePin: true })).toBe("명단 입장 (학번 + PIN)");
+    expect(entryText({ entryMode: "roster", requirePin: false })).toBe("명단 입장 (학번만, PIN 없음)");
+    expect(entryText({ entryMode: "free", requirePin: false })).toBe("자유 입장");
+    expect(entryStepText({ entryMode: "roster", requirePin: false })).toBe("학번");
   });
   it("파일 이름 정리", () => {
     expect(safeFileName('3/2반: "과학"')).toBe("3_2반_ _과학_");

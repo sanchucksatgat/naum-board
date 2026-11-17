@@ -2,7 +2,8 @@
  * 보드 접속자 인증 (DESIGN §10). 교사 쿠키 또는 학생 토큰(보드 범위).
  *
  * 학생 토큰: purpose "student", HMAC 서명, 30일.
- *   명단: { b: boardId, r: "s:{학생id}", k: "roster", sid, pv }  — pv(PIN 버전)가 바뀌면(PIN 초기화·등록) 무효
+ *   명단: { b: boardId, r: "s:{학생id}", k: "roster", sid, pv, np? }  — pv(PIN 버전)가 바뀌면(PIN 초기화·바꾸기) 무효.
+ *         np = 1 이면 PIN 없이(학번만) 들어온 입장 → 보드가 PIN 을 묻게 바뀌면 무효
  *   자유: { b: boardId, r: "f:{기기 해시}", k: "free", n: 닉네임 }
  * 토큰 위치: `Authorization: Bearer …` 또는 (웹소켓처럼 헤더를 못 붙일 때) 쿼리 `?st=…`.
  * 학생 토큰이 있으면 그것을 쓰고, 없을 때만 교사 쿠키를 본다.
@@ -20,30 +21,18 @@ export interface BoardActor {
   name: string;
   boardId: string;
   code: string;
+  /** 명단 학생이 PIN 없이(학번만) 들어옴. 보드가 PIN 을 묻게 바뀌면 이 연결은 끊긴다 */
+  noPin?: true;
 }
 
 export const STUDENT_TOKEN_PURPOSE = "student";
 export const STUDENT_TOKEN_TTL = 30 * 24 * 60 * 60;
-export const PIN_SETUP_PURPOSE = "pin_setup";
-export const PIN_SETUP_TTL = 10 * 60;
-
 export type StudentTokenClaims =
-  | { b: string; r: string; k: "roster"; sid: string; pv: number }
+  | { b: string; r: string; k: "roster"; sid: string; pv: number; np?: 1 }
   | { b: string; r: string; k: "free"; n: string };
 
 export async function issueStudentToken(env: Env, claims: StudentTokenClaims): Promise<string> {
   return signToken(await getSigningSecret(env), STUDENT_TOKEN_PURPOSE, claims, STUDENT_TOKEN_TTL);
-}
-
-export async function issuePinSetupToken(env: Env, c: { b: string; sid: string; pv: number }): Promise<string> {
-  return signToken(await getSigningSecret(env), PIN_SETUP_PURPOSE, c, PIN_SETUP_TTL);
-}
-
-export async function readPinSetupToken(env: Env, token: unknown): Promise<{ b: string; sid: string; pv: number } | null> {
-  if (typeof token !== "string") return null;
-  const c = await verifyToken<{ b: string; sid: string; pv: number }>(await getSigningSecret(env), PIN_SETUP_PURPOSE, token);
-  if (!c || typeof c.b !== "string" || typeof c.sid !== "string" || typeof c.pv !== "number") return null;
-  return c;
 }
 
 /** 자유 입장 ref: 보드 id + 기기 토큰의 SHA-256 (기기 토큰 자체는 서버에 남기지 않는다) */
@@ -84,14 +73,15 @@ export async function resolveBoardActor(request: Request, env: Env, rawCode: str
     if (c.k !== board.entryMode) return no("unauthorized", 401, "입장 방식이 바뀌었어요. 다시 입장해 주세요.");
     if (c.k === "roster") {
       const s = res.student;
-      if (!s || s.ref !== c.r || s.pinVersion !== c.pv || !s.pinRegistered) return no("unauthorized", 401, "다시 입장해 주세요.");
-      return {
-        ok: true,
-        actor: { role: "student", ref: s.ref, name: s.name, boardId: board.id, code: board.code },
-        board,
-        student: s,
-        claims: { b: c.b, r: c.r, k: "roster", sid: c.sid, pv: c.pv },
-      };
+      if (!s || s.ref !== c.r || s.pinVersion !== c.pv) return no("unauthorized", 401, "다시 입장해 주세요.");
+      const noPin = c.np === 1;
+      // PIN 없이 들어온 입장은 PIN 을 묻는 보드에서 쓸 수 없다 (보드 설정이 바뀌었거나 위조 시도)
+      if (noPin && board.requirePin) return no("unauthorized", 401, "이제 PIN으로 들어와요. 다시 입장해 주세요.");
+      const actor: BoardActor = { role: "student", ref: s.ref, name: s.name, boardId: board.id, code: board.code };
+      if (noPin) actor.noPin = true;
+      const claims: StudentTokenClaims = { b: c.b, r: c.r, k: "roster", sid: c.sid, pv: c.pv };
+      if (noPin) claims.np = 1;
+      return { ok: true, actor, board, student: s, claims };
     }
     if (c.k === "free" && c.r.startsWith("f:")) {
       const name = typeof c.n === "string" ? c.n : "학생";

@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { BoardPublicInfo, StudentInfo } from "../../src/shared/protocol";
-import { LIMITS } from "../../src/shared/protocol";
+import { DEFAULT_PIN, LIMITS } from "../../src/shared/protocol";
 import { ApiError, formatWait, studentApi } from "./api";
 import { getDeviceToken, getRemembered, setRemembered, type RememberedStudent } from "./storage";
 import { Spinner } from "../ui/Spinner";
 
-/** 학생 입장 화면: 명단(학번+PIN, 처음이면 나만의 PIN 정하기) | 자유(닉네임) */
+/** 학생 입장 화면: 명단(학번+PIN, 또는 보드 설정에 따라 학번만) | 자유(닉네임) */
 export function Entry(props: {
   code: string;
   info: BoardPublicInfo;
   message?: string | null;
-  onEntered: (token: string, student: StudentInfo) => void;
+  onEntered: (token: string, student: StudentInfo, opts?: { defaultPin?: boolean }) => void;
 }) {
   return (
     <main class="entry">
@@ -35,6 +35,7 @@ export function Entry(props: {
 function useCountdown(until: number | null): number {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
+    setNow(Date.now());
     if (!until || until <= Date.now()) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
@@ -46,17 +47,179 @@ function digitsOnly(v: string, max: number) {
   return v.replace(/\D/g, "").slice(0, max);
 }
 
-function RosterEntry(props: { code: string; onEntered: (token: string, student: StudentInfo) => void }) {
+type Entered = (token: string, student: StudentInfo, opts?: { defaultPin?: boolean }) => void;
+
+function RosterEntry(props: { code: string; info: BoardPublicInfo; onEntered: Entered }) {
+  return props.info.requirePin === false ? <NumberOnlyEntry {...props} /> : <PinEntry {...props} />;
+}
+
+/** 이 기기에서 마지막으로 들어온 학생 */
+function useRemembered(code: string) {
   const [remembered, setRememberedState] = useState<RememberedStudent | null>(() => {
-    const r = getRemembered(props.code);
+    const r = getRemembered(code);
     return r?.number ? r : null;
   });
+  const forget = () => {
+    setRemembered(code, null);
+    setRememberedState(null);
+  };
+  return [remembered, forget] as const;
+}
+
+function WhoCard(props: { who: RememberedStudent; onOther: () => void }) {
+  return (
+    <div class="entry-who">
+      <span class="entry-who-icon" aria-hidden="true">
+        🙂
+      </span>
+      <div class="entry-who-text">
+        <strong>{props.who.name || "학생"}</strong>
+        <span class="muted">학번 {props.who.number}</span>
+      </div>
+      <button type="button" class="btn btn-small" onClick={props.onOther}>
+        다른 사람이에요
+      </button>
+    </div>
+  );
+}
+
+function NumberField(props: { value: string; onInput: (v: string) => void; inputRef: preact.RefObject<HTMLInputElement>; hint?: string }) {
+  return (
+    <div class="field">
+      <label for="entry-number">학번</label>
+      <input
+        ref={props.inputRef}
+        id="entry-number"
+        class="input entry-input"
+        inputMode="numeric"
+        autoComplete="off"
+        maxLength={LIMITS.studentNumber}
+        placeholder="예: 20301"
+        value={props.value}
+        aria-describedby={props.hint ? "entry-number-hint" : undefined}
+        onInput={(e) => props.onInput((e.currentTarget as HTMLInputElement).value.replace(/\s/g, ""))}
+      />
+      {props.hint ? (
+        <span id="entry-number-hint" class="hint">
+          {props.hint}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function entryError(err: unknown): string {
+  return err instanceof ApiError ? err.message : "잠시 문제가 생겼어요. 다시 해 주세요.";
+}
+
+/** PIN 없이 들어오는 보드: 학번 → "○○○ 맞나요?" → 들어가기 */
+function NumberOnlyEntry(props: { code: string; onEntered: Entered }) {
+  const [remembered, forget] = useRemembered(props.code);
+  const [number, setNumber] = useState(remembered?.number ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [confirm, setConfirm] = useState<{ token: string; student: StudentInfo } | null>(null);
+  const wait = useCountdown(lockedUntil);
+  const numberRef = useRef<HTMLInputElement>(null);
+  const yesRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (confirm) yesRef.current?.focus();
+    else if (!remembered) numberRef.current?.focus();
+  }, [confirm, remembered]);
+
+  const enter = (token: string, student: StudentInfo) => {
+    setRemembered(props.code, { number: student.number, name: student.name });
+    props.onEntered(token, student);
+  };
+
+  const submit = async (e: Event) => {
+    e.preventDefault();
+    setError(null);
+    const n = (remembered?.number ?? number).trim();
+    if (!n) return setError("학번을 써 주세요.");
+    setBusy(true);
+    try {
+      const r = await studentApi.login(props.code, { number: n });
+      // 이 기기에서 전에 들어온 학생이면 바로, 아니면 이름을 확인하고 들어간다
+      if (remembered) enter(r.token, r.student);
+      else setConfirm({ token: r.token, student: r.student });
+    } catch (err) {
+      setError(entryError(err));
+      if (err instanceof ApiError && err.code === "too_many_attempts" && err.retryAfterMs) setLockedUntil(Date.now() + err.retryAfterMs);
+      numberRef.current?.focus();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (confirm) {
+    const name = confirm.student.realName || confirm.student.name;
+    return (
+      <div class="stack">
+        <div class="entry-confirm" role="status">
+          <span class="entry-who-icon" aria-hidden="true">
+            🙂
+          </span>
+          <p class="entry-confirm-q">
+            <strong>{name}</strong> 맞나요?
+          </p>
+          <p class="muted">학번 {confirm.student.number}</p>
+        </div>
+        <button ref={yesRef} type="button" class="btn btn-primary entry-submit" onClick={() => enter(confirm.token, confirm.student)}>
+          네, 맞아요
+        </button>
+        <button
+          type="button"
+          class="btn"
+          onClick={() => {
+            setConfirm(null);
+            setNumber("");
+          }}
+        >
+          아니에요 (학번 다시 쓰기)
+        </button>
+      </div>
+    );
+  }
+
+  const locked = wait > 0;
+  return (
+    <form class="stack" onSubmit={submit} noValidate>
+      {remembered ? (
+        <WhoCard
+          who={remembered}
+          onOther={() => {
+            forget();
+            setNumber("");
+            setError(null);
+          }}
+        />
+      ) : (
+        <NumberField value={number} onInput={setNumber} inputRef={numberRef} hint="내 학번을 써요. 친구 학번으로 들어가면 안 돼요." />
+      )}
+      {error ? (
+        <p class="error-text" role="alert">
+          {error}
+          {locked ? ` (${formatWait(wait)} 남았어요)` : ""}
+        </p>
+      ) : null}
+      <button class="btn btn-primary entry-submit" type="submit" disabled={busy || locked}>
+        {busy ? <Spinner label="확인하는 중" /> : locked ? `${formatWait(wait)} 뒤에 다시 해요` : remembered ? "들어가기" : "다음"}
+      </button>
+    </form>
+  );
+}
+
+/** 학번 + PIN (처음 PIN 은 모두 1234, 바꿨으면 나만의 PIN) */
+function PinEntry(props: { code: string; onEntered: Entered }) {
+  const [remembered, forget] = useRemembered(props.code);
   const [number, setNumber] = useState(remembered?.number ?? "");
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
-  const [setup, setSetup] = useState<{ setupToken: string; student: StudentInfo } | null>(null);
   const wait = useCountdown(lockedUntil);
   const pinRef = useRef<HTMLInputElement>(null);
   const numberRef = useRef<HTMLInputElement>(null);
@@ -65,47 +228,23 @@ function RosterEntry(props: { code: string; onEntered: (token: string, student: 
     (remembered ? pinRef : numberRef).current?.focus();
   }, [remembered]);
 
-  if (setup) {
-    return (
-      <PinSetup
-        code={props.code}
-        setupToken={setup.setupToken}
-        student={setup.student}
-        onBack={() => {
-          setSetup(null);
-          setPin("");
-        }}
-        onDone={(token, student) => {
-          setRemembered(props.code, { number: student.number, name: student.name });
-          props.onEntered(token, student);
-        }}
-      />
-    );
-  }
-
   const submit = async (e: Event) => {
     e.preventDefault();
     setError(null);
-    const n = number.trim();
+    const n = (remembered?.number ?? number).trim();
     if (!n) return setError("학번을 써 주세요.");
     if (!/^\d{4}$/.test(pin)) return setError("PIN 숫자 4자리를 써 주세요.");
     setBusy(true);
     try {
       const r = await studentApi.login(props.code, { number: n, pin });
-      if (r.status === "pin_setup") {
-        setSetup({ setupToken: r.setupToken, student: r.student });
-      } else {
-        setRemembered(props.code, { number: r.student.number ?? n, name: r.student.name });
-        props.onEntered(r.token, r.student);
-      }
+      setRemembered(props.code, { number: r.student.number ?? n, name: r.student.name });
+      props.onEntered(r.token, r.student, { defaultPin: !!r.defaultPin });
     } catch (err) {
       setPin("");
-      if (err instanceof ApiError) {
-        setError(err.message);
-        if ((err.code === "student_locked" || err.code === "too_many_attempts") && err.retryAfterMs) {
-          setLockedUntil(Date.now() + err.retryAfterMs);
-        }
-      } else setError("잠시 문제가 생겼어요. 다시 해 주세요.");
+      setError(entryError(err));
+      if (err instanceof ApiError && (err.code === "student_locked" || err.code === "too_many_attempts") && err.retryAfterMs) {
+        setLockedUntil(Date.now() + err.retryAfterMs);
+      }
       pinRef.current?.focus();
     } finally {
       setBusy(false);
@@ -116,43 +255,17 @@ function RosterEntry(props: { code: string; onEntered: (token: string, student: 
   return (
     <form class="stack" onSubmit={submit} noValidate>
       {remembered ? (
-        <div class="entry-who">
-          <span class="entry-who-icon" aria-hidden="true">
-            🙂
-          </span>
-          <div class="entry-who-text">
-            <strong>{remembered.name || "학생"}</strong>
-            <span class="muted">학번 {remembered.number}</span>
-          </div>
-          <button
-            type="button"
-            class="btn btn-small"
-            onClick={() => {
-              setRemembered(props.code, null);
-              setRememberedState(null);
-              setNumber("");
-              setPin("");
-              setError(null);
-            }}
-          >
-            다른 사람이에요
-          </button>
-        </div>
+        <WhoCard
+          who={remembered}
+          onOther={() => {
+            forget();
+            setNumber("");
+            setPin("");
+            setError(null);
+          }}
+        />
       ) : (
-        <div class="field">
-          <label for="entry-number">학번</label>
-          <input
-            ref={numberRef}
-            id="entry-number"
-            class="input entry-input"
-            inputMode="numeric"
-            autoComplete="off"
-            maxLength={LIMITS.studentNumber}
-            placeholder="예: 20301"
-            value={number}
-            onInput={(e) => setNumber((e.currentTarget as HTMLInputElement).value.replace(/\s/g, ""))}
-          />
-        </div>
+        <NumberField value={number} onInput={setNumber} inputRef={numberRef} />
       )}
       <div class="field">
         <label for="entry-pin">PIN 4자리</label>
@@ -170,7 +283,7 @@ function RosterEntry(props: { code: string; onEntered: (token: string, student: 
           onInput={(e) => setPin(digitsOnly((e.currentTarget as HTMLInputElement).value, 4))}
         />
         <span id="entry-pin-hint" class="hint">
-          처음이면 선생님이 준 쪽지의 PIN을 써요.
+          처음 PIN은 {DEFAULT_PIN}예요. 나만의 PIN으로 바꿨다면 그 번호를 써요.
         </span>
       </div>
       {error ? (
@@ -186,91 +299,7 @@ function RosterEntry(props: { code: string; onEntered: (token: string, student: 
   );
 }
 
-const WEAK_PINS = new Set(["0000", "1111", "1234"]);
-
-function PinSetup(props: {
-  code: string;
-  setupToken: string;
-  student: StudentInfo;
-  onBack: () => void;
-  onDone: (token: string, student: StudentInfo) => void;
-}) {
-  const [a, setA] = useState("");
-  const [b, setB] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const first = useRef<HTMLInputElement>(null);
-  useEffect(() => first.current?.focus(), []);
-
-  const submit = async (e: Event) => {
-    e.preventDefault();
-    setError(null);
-    if (!/^\d{4}$/.test(a)) return setError("숫자 4자리로 정해 주세요.");
-    if (WEAK_PINS.has(a) || /^(\d)\1{3}$/.test(a)) return setError("너무 쉬운 PIN이에요. 다른 숫자로 정해 주세요.");
-    if (a !== b) return setError("두 번 쓴 PIN이 달라요. 다시 써 주세요.");
-    setBusy(true);
-    try {
-      const r = await studentApi.setPin(props.code, { setupToken: props.setupToken, newPin: a });
-      props.onDone(r.token, r.student);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "잠시 문제가 생겼어요. 다시 해 주세요.");
-      if (err instanceof ApiError && err.code === "unauthorized") setTimeout(props.onBack, 1500);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form class="stack" onSubmit={submit} noValidate>
-      <div class="entry-welcome">
-        <strong>{props.student.name}</strong> 님, 반가워요! 👋
-        <br />
-        이제 <strong>나만의 PIN</strong>을 정해요. 다음부터는 이 PIN으로 들어와요.
-      </div>
-      <div class="field">
-        <label for="pin-new">새 PIN 4자리</label>
-        <input
-          ref={first}
-          id="pin-new"
-          class="input entry-input entry-pin"
-          type="password"
-          inputMode="numeric"
-          autoComplete="new-password"
-          maxLength={4}
-          value={a}
-          onInput={(e) => setA(digitsOnly((e.currentTarget as HTMLInputElement).value, 4))}
-        />
-      </div>
-      <div class="field">
-        <label for="pin-again">한 번 더</label>
-        <input
-          id="pin-again"
-          class="input entry-input entry-pin"
-          type="password"
-          inputMode="numeric"
-          autoComplete="new-password"
-          maxLength={4}
-          value={b}
-          onInput={(e) => setB(digitsOnly((e.currentTarget as HTMLInputElement).value, 4))}
-        />
-        <span class="hint">0000, 1111, 1234 처럼 쉬운 숫자와 쪽지의 PIN은 쓸 수 없어요. 친구에게 알려 주지 마세요.</span>
-      </div>
-      {error ? (
-        <p class="error-text" role="alert">
-          {error}
-        </p>
-      ) : null}
-      <button class="btn btn-primary entry-submit" type="submit" disabled={busy}>
-        {busy ? <Spinner label="저장하는 중" /> : "PIN 정하고 들어가기"}
-      </button>
-      <button type="button" class="btn btn-ghost" onClick={props.onBack}>
-        ← 처음으로
-      </button>
-    </form>
-  );
-}
-
-function FreeEntry(props: { code: string; onEntered: (token: string, student: StudentInfo) => void }) {
+function FreeEntry(props: { code: string; onEntered: Entered }) {
   const remembered = getRemembered(props.code);
   const [nickname, setNickname] = useState(remembered?.nickname ?? "");
   const [busy, setBusy] = useState(false);

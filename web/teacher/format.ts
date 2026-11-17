@@ -5,6 +5,18 @@ export const TYPE_LABEL: Record<BoardType, string> = { single: "학생당 1카�
 export const COLUMN_LABEL: Record<ColumnMode, string> = { student: "개인별", group: "모둠별", topic: "주제별" };
 export const ENTRY_LABEL: Record<EntryMode, string> = { roster: "명단 입장", free: "자유 입장" };
 
+/** 입장 방식 한 줄: "명단 입장 (학번 + PIN)" | "명단 입장 (학번만, PIN 없음)" | "자유 입장" */
+export function entryText(b: { entryMode: EntryMode; requirePin?: boolean }): string {
+  if (b.entryMode === "free") return ENTRY_LABEL.free;
+  return b.requirePin === false ? "명단 입장 (학번만, PIN 없음)" : "명단 입장 (학번 + PIN)";
+}
+
+/** 학생이 입장 화면에서 할 일 (공유 안내용) */
+export function entryStepText(b: { entryMode: EntryMode; requirePin?: boolean }): string {
+  if (b.entryMode === "free") return "닉네임";
+  return b.requirePin === false ? "학번" : "학번과 PIN";
+}
+
 /** "방금", "5분 전", "3시간 전", "어제", "4일 전", 그보다 오래면 날짜 */
 export function relativeTime(ts: number | null | undefined, now = Date.now()): string {
   if (!ts) return "아직 없음";

@@ -4,7 +4,7 @@ import type { BoardDetail } from "../../src/shared/protocol";
 import type { BoardDriveResponse } from "../../src/shared/files";
 import { api, errorMessage } from "./api";
 import { BoardForm, RenameBoard } from "./BoardForm";
-import { COLUMN_LABEL, ENTRY_LABEL, TYPE_LABEL, backupText, formatDateTime, relativeTime, spacedCode } from "./format";
+import { COLUMN_LABEL, TYPE_LABEL, entryText, backupText, formatDateTime, relativeTime, spacedCode } from "./format";
 import { Link, go } from "./nav";
 import { ShareModal } from "./Share";
 import { ErrorBox, Loading, TypeToConfirm, toast, useAction, useAsync } from "./ui";
@@ -94,7 +94,7 @@ export function BoardManage(props: { id: string; created?: boolean }) {
             <dt>열 구성</dt>
             <dd>{COLUMN_LABEL[s.columnMode]}</dd>
             <dt>입장 방식</dt>
-            <dd>{ENTRY_LABEL[s.entryMode]}</dd>
+            <dd>{entryText(s)}</dd>
             {s.entryMode === "roster" && (
               <>
                 <dt>반</dt>
@@ -120,9 +120,11 @@ export function BoardManage(props: { id: string; created?: boolean }) {
           </dl>
           {s.entryMode === "roster" && b.classId && (
             <div class="row">
-              <Link href={`/teacher/classes/${b.classId}/pins?board=${b.id}`} class="btn btn-small">
-                PIN 쪽지 인쇄
-              </Link>
+              {s.requirePin && (
+                <Link href={`/teacher/classes/${b.classId}/pins?board=${b.id}`} class="btn btn-small">
+                  PIN 쪽지 인쇄
+                </Link>
+              )}
               <Link href={`/teacher/classes/${b.classId}`} class="btn btn-small">
                 명단 관리
               </Link>

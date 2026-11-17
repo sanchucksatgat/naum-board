@@ -2,7 +2,7 @@
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 import {
-  LIMITS, type BoardDetail, type BoardSettingsPatch, type BoardType, type ClassSummary, type ColumnMode, type EntryMode,
+  DEFAULT_PIN, LIMITS, type BoardDetail, type BoardSettingsPatch, type BoardType, type ClassSummary, type ColumnMode, type EntryMode,
 } from "../../src/shared/protocol";
 import { api, errorMessage } from "./api";
 import { parseTopics } from "./format";
@@ -16,6 +16,8 @@ interface FormState {
   type: BoardType;
   columnMode: ColumnMode;
   entryMode: EntryMode;
+  /** 명단 입장에서 PIN 을 묻는지 */
+  requirePin: boolean;
   classId: string;
   topics: string;
   moderation: boolean;
@@ -34,6 +36,7 @@ function initial(board?: BoardDetail): FormState {
     type: s?.type ?? "cumulative",
     columnMode: s?.columnMode ?? "student",
     entryMode: s?.entryMode ?? "roster",
+    requirePin: s?.requirePin ?? true,
     classId: board?.classId ?? "",
     topics: "",
     moderation: s?.moderation ?? false,
@@ -76,6 +79,7 @@ export function BoardForm(props: { board?: BoardDetail; onClose: () => void; onS
         type: f.type,
         columnMode: f.columnMode,
         entryMode: f.entryMode,
+        requirePin: f.requirePin,
         moderation: f.moderation,
         anonymous: f.anonymous,
         allowLikes: f.allowLikes,
@@ -116,6 +120,8 @@ export function BoardForm(props: { board?: BoardDetail; onClose: () => void; onS
 
   const cur = props.board?.settings;
   const structureChanged = editing && cur && (cur.columnMode !== f.columnMode || cur.entryMode !== f.entryMode);
+  // 명단 입장 그대로에서 PIN 묻기만 바뀜
+  const pinChanged = editing && cur && cur.entryMode === "roster" && f.entryMode === "roster" && cur.requirePin !== f.requirePin;
 
   return (
     <Modal title={editing ? "보드 설정" : "새 보드 만들기"} onClose={props.onClose} busy={busy} wide>
@@ -194,10 +200,25 @@ export function BoardForm(props: { board?: BoardDetail; onClose: () => void; onS
           value={f.entryMode}
           onChange={setEntry}
           options={[
-            { value: "roster", label: "명단 입장", hint: "학번과 PIN 4자리로 들어와요. 누가 썼는지 확실하고 미제출자를 볼 수 있어요." },
+            { value: "roster", label: "명단 입장", hint: "반 명단의 학번으로 들어와요. 누가 썼는지 알 수 있고 미제출자를 볼 수 있어요." },
             { value: "free", label: "자유 입장", hint: "명단 없이 닉네임만 적고 들어와요. 연수·공개 수업에 좋아요." },
           ]}
         />
+
+        {f.entryMode === "roster" && (
+          <div class="t-subchoice">
+            <Choice<"pin" | "nopin">
+              name="bf-pin"
+              legend="명단 입장할 때 PIN"
+              value={f.requirePin ? "pin" : "nopin"}
+              onChange={(v) => set("requirePin", v === "pin")}
+              options={[
+                { value: "pin", label: "학번 + PIN", hint: `처음 PIN은 모두 ${DEFAULT_PIN}예요. 학생이 나만의 번호로 바꿀 수 있어요.` },
+                { value: "nopin", label: "PIN 없이 학번만으로 입장", hint: "더 쉽지만, 친구 학번을 쓰면 친구 이름으로 들어올 수 있어요." },
+              ]}
+            />
+          </div>
+        )}
 
         {f.entryMode === "roster" && (
           <div class="field">
@@ -259,6 +280,13 @@ export function BoardForm(props: { board?: BoardDetail; onClose: () => void; onS
         </details>
 
         {structureChanged && <p class="t-warnbox">열 구성이나 입장 방식을 바꾸면 보드가 새로 정리되고, 입장 방식을 바꾸면 학생들이 다시 들어와야 해요.</p>}
+        {pinChanged && (
+          <p class="t-warnbox">
+            {f.requirePin
+              ? `PIN 없이 들어와 있던 학생은 다시 학번과 PIN(처음엔 ${DEFAULT_PIN})으로 들어와야 해요. 쓴 글은 그대로예요.`
+              : "이제 학번만으로 들어와요. 지금 들어와 있는 학생은 그대로 있어요."}
+          </p>
+        )}
         {error && (
           <p class="error-text" role="alert">
             {error}

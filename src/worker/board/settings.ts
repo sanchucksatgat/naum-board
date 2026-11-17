@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS: BoardSettings = {
   type: "cumulative",
   columnMode: "student",
   entryMode: "roster",
+  requirePin: true,
   moderation: false,
   locked: false,
   anonymous: false,
@@ -40,6 +41,7 @@ export function parseSettingsPatch(raw: unknown): BoardSettingsPatch {
       case "entryMode":
         out.entryMode = oneOf(v, ["roster", "free"] as const, "입장 방식");
         break;
+      case "requirePin":
       case "moderation":
       case "locked":
       case "anonymous":
@@ -65,4 +67,4 @@ export function checkSettingsCombination(s: BoardSettings): void {
 }
 
 /** Registry 원본과 묶인 필드 */
-export const MIRRORED_KEYS = ["title", "type", "columnMode", "entryMode", "locked"] as const;
+export const MIRRORED_KEYS = ["title", "type", "columnMode", "entryMode", "requirePin", "locked"] as const;

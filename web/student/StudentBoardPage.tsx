@@ -18,7 +18,7 @@ type Phase =
   | { k: "archived" }
   | { k: "error"; message: string }
   | { k: "entry"; info: BoardPublicInfo; message?: string }
-  | { k: "board"; role: "teacher" | "student"; info: BoardPublicInfo | null };
+  | { k: "board"; role: "teacher" | "student"; info: BoardPublicInfo | null; pinNudge?: boolean };
 
 /**
  * /b/:code — 학생 입장과 보드 화면 (교사도 같은 주소로 들어와 보드 안에서 관리한다).
@@ -87,7 +87,7 @@ export function StudentBoardPage(props: { params: Record<string, string> }) {
     if (phase.k === "board" && phase.role === "student") {
       setStudentToken(code, null);
       void studentApi.info(code).then(
-        (info) => setPhase({ k: "entry", info, message: "다시 들어와 주세요. (선생님이 PIN이나 명단을 바꿨을 수 있어요)" }),
+        (info) => setPhase({ k: "entry", info, message: "다시 들어와 주세요. (PIN이 바뀌었거나 선생님이 보드 설정을 바꿨을 수 있어요)" }),
         () => setPhase({ k: "notfound" }),
       );
       return;
@@ -130,9 +130,9 @@ export function StudentBoardPage(props: { params: Record<string, string> }) {
           code={code}
           info={phase.info}
           message={phase.message}
-          onEntered={(token) => {
+          onEntered={(token, _student, opts) => {
             setStudentToken(code, token);
-            setPhase({ k: "board", role: "student", info: phase.info });
+            setPhase({ k: "board", role: "student", info: phase.info, pinNudge: !!opts?.defaultPin });
           }}
         />
       );
@@ -143,6 +143,7 @@ export function StudentBoardPage(props: { params: Record<string, string> }) {
           key={phase.role}
           code={code}
           role={phase.role}
+          pinNudge={!!phase.pinNudge}
           getToken={() => (phase.role === "student" ? getStudentToken(code) : null)}
           setToken={(t) => setStudentToken(code, t)}
           onClosed={onClosed}

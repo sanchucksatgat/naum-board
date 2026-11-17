@@ -44,6 +44,7 @@ function snap(over: Partial<BoardSnapshot> = {}): BoardSnapshot {
       type: "cumulative",
       columnMode: "student",
       entryMode: "roster",
+      requirePin: true,
       moderation: false,
       locked: false,
       anonymous: false,
@@ -333,6 +334,50 @@ describe("BoardConnection", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("withTokenChange: 토큰을 바꾸는 동안 연결을 멈추고(4001 을 안 받음), 끝나면 새 토큰으로 바로 다시 연결", async () => {
+    let token = "old";
+    const sockets: FakeSocket[] = [];
+    const conn = new BoardConnection({
+      code: "ABCDEF",
+      getToken: () => token,
+      headless: true,
+      createSocket: (url) => {
+        const s = new FakeSocket(url);
+        sockets.push(s);
+        return s;
+      },
+    });
+    conn.connect();
+    sockets[0]!.serverOpen();
+    sockets[0]!.serverSend({ t: "snapshot", snapshot: snap() });
+    let release!: () => void;
+    const p = conn.withTokenChange(
+      () =>
+        new Promise<void>((r) => {
+          release = () => {
+            token = "new";
+            r();
+          };
+        }),
+    );
+    expect(sockets[0]!.onclose).toBeNull(); // 예전 연결은 조용히 닫힘 → 서버의 4001 이 와도 입장 화면으로 안 감
+    expect(conn.getState().status).toBe("reconnecting");
+    void conn.send({ t: "like.set", postId: "p2", liked: true });
+    expect(sockets).toHaveLength(1);
+    release();
+    await p;
+    expect(sockets).toHaveLength(2);
+    expect(sockets[1]!.url).toContain("?st=new");
+    sockets[1]!.serverOpen();
+    sockets[1]!.serverSend({ t: "snapshot", snapshot: snap() });
+    expect(conn.getState().status).toBe("open");
+    expect(sockets[1]!.sent.map((d) => (JSON.parse(d) as { t: string }).t)).toEqual(["like.set"]);
+    // 실패해도 다시 연결 (그때의 토큰으로)
+    await expect(conn.withTokenChange(() => Promise.reject(new Error("x")))).rejects.toThrow("x");
+    expect(sockets).toHaveLength(3);
+    conn.close();
   });
 
   it("4008 이면 몇 초 기다렸다가 다시 연결", async () => {

@@ -7,6 +7,8 @@ import { authenticateBoardActor, issueStudentToken } from "../src/worker/board/a
 import { getRegistry } from "../src/worker/stubs";
 import type { BoardDetail, LoginResponse, TeacherStudent, BoardSummary, StudentMeResponse } from "../src/shared/protocol";
 
+const bearerPost = (token: string, path: string, body: unknown) => publicPost(path, body, { authorization: `Bearer ${token}` });
+
 let t: Teacher;
 beforeEach(async () => {
   await resetAll();
@@ -75,7 +77,7 @@ describe("교사 관리 REST", () => {
     const res2 = await t.req("POST", `/api/teacher/classes/${cls.id}/students`, { students: [{ number: "abc", name: "나" }] });
     expect(res2.status).toBe(400);
     const ok = await t.json<{ added: TeacherStudent[] }>("POST", `/api/teacher/classes/${cls.id}/students`, { students: [{ number: "2", name: "나" }] });
-    expect(ok.added[0]!.initialPin).toMatch(/^\d{4}$/); // PIN 이 없으면 무작위 초기 PIN
+    expect(ok.added[0]!.initialPin).toBe("1234"); // PIN 이 없으면 모두 같은 처음 PIN
     const all = await t.json<{ students: TeacherStudent[] }>("GET", `/api/teacher/classes/${cls.id}/students`);
     expect(all.students.length).toBe(2);
   });
@@ -84,29 +86,28 @@ describe("교사 관리 REST", () => {
     const { board } = await rosterBoard();
     const res = await call(`/api/boards/${board.code.toLowerCase()}`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ code: board.code, title: "과학 관찰", entryMode: "roster", locked: false, archived: false });
+    expect(await res.json()).toEqual({ code: board.code, title: "과학 관찰", entryMode: "roster", requirePin: true, locked: false, archived: false });
     expect((await call("/api/boards/ZZZZZZ")).status).toBe(404);
   });
 });
 
 describe("명단 입장 (학번 + PIN)", () => {
-  it("처음엔 초기 PIN → 나만의 PIN 등록 → 이후 나만의 PIN 으로만", async () => {
+  it("처음 PIN 으로 바로 들어가고(바꾸라고 강제하지 않음), 나만의 PIN 으로 바꾸면 그 PIN 으로만", async () => {
     const { board } = await rosterBoard();
     const r1 = await publicPost(`/api/boards/${board.code}/login`, { number: "20301", pin: "1357" });
+    expect(r1.status).toBe(200);
     const b1 = (await r1.json()) as LoginResponse;
-    expect(b1.status).toBe("pin_setup");
-    if (b1.status !== "pin_setup") throw new Error();
-    // 초기 PIN 과 같은 PIN, 쉬운 PIN 은 거부
-    expect((await publicPost(`/api/boards/${board.code}/pin`, { setupToken: b1.setupToken, newPin: "1357" })).status).toBe(400);
-    expect((await publicPost(`/api/boards/${board.code}/pin`, { setupToken: b1.setupToken, newPin: "1111" })).status).toBe(400);
-    const r2 = await publicPost(`/api/boards/${board.code}/pin`, { setupToken: b1.setupToken, newPin: "9024" });
-    expect(r2.status).toBe(200);
-    // 초기 PIN 은 이제 안 됨
+    expect(b1.status).toBe("ok");
+    // 교사가 CSV 로 적은 처음 PIN 은 모두가 아는 번호가 아니므로 바꾸자는 안내는 없다
+    expect(b1.defaultPin).toBeUndefined();
+    expect((await connectRaw(board.code, { token: b1.token })).status).toBe(101);
+    const r2 = await bearerPost(b1.token, `/api/boards/${board.code}/pin`, { currentPin: "1357", newPin: "9024" });
+    expect(r2.status, await r2.clone().text()).toBe(200);
+    // 처음 PIN 은 이제 안 됨
     expect((await publicPost(`/api/boards/${board.code}/login`, { number: "20301", pin: "1357" })).status).toBe(401);
-    const r3 = await publicPost(`/api/boards/${board.code}/login`, { number: "20301", pin: "9024" });
-    const b3 = (await r3.json()) as LoginResponse;
+    const b3 = (await (await publicPost(`/api/boards/${board.code}/login`, { number: "20301", pin: "9024" })).json()) as LoginResponse;
     expect(b3.status).toBe("ok");
-    // 교사 화면: 등록됨, 초기 PIN 은 더 이상 없음 (서버도 PIN 을 모름)
+    // 교사 화면: 바꿈, 처음 PIN 은 더 이상 없음 (서버도 PIN 을 모름)
     const list = await t.json<{ students: TeacherStudent[] }>("GET", `/api/teacher/classes/${board.classId}/students`);
     expect(list.students[0]).toMatchObject({ pinRegistered: true, initialPin: null });
     // 저장된 값은 HMAC 해시 (평문 아님)
@@ -152,19 +153,21 @@ describe("명단 입장 (학번 + PIN)", () => {
     expect((await publicPost(`/api/boards/${board.code}/login`, { number: "20301", pin: "1357" }, { "cf-connecting-ip": "203.0.113.10" })).status).toBe(200);
   });
 
-  it("PIN 초기화: 새 초기 PIN, 기존 토큰 무효, 접속 중이면 끊김", async () => {
+  it("PIN 초기화: 처음 번호 1234 로, 기존 토큰 무효, 접속 중이면 끊김", async () => {
     const { board, students } = await rosterBoard();
     const token = await rosterLogin(board.code, "20301", "1357", "5813");
     const ws = await connect(board.code, { token });
     const s = students[0]!;
     const reset = await t.json<{ student: TeacherStudent }>("POST", `/api/teacher/students/${s.id}/reset-pin`);
     expect(reset.student.pinRegistered).toBe(false);
-    expect(reset.student.initialPin).toMatch(/^\d{4}$/);
+    expect(reset.student.initialPin).toBe("1234");
     expect((await ws.waitClose()).code).toBe(4001);
     expect((await connectRaw(board.code, { token })).status).toBe(401);
     expect((await publicPost(`/api/boards/${board.code}/login`, { number: "20301", pin: "5813" })).status).toBe(401);
-    const again = (await (await publicPost(`/api/boards/${board.code}/login`, { number: "20301", pin: reset.student.initialPin })).json()) as LoginResponse;
-    expect(again.status).toBe("pin_setup");
+    // CSV 로 받은 예전 처음 PIN 도 아님
+    expect((await publicPost(`/api/boards/${board.code}/login`, { number: "20301", pin: "1357" })).status).toBe(401);
+    const again = (await (await publicPost(`/api/boards/${board.code}/login`, { number: "20301", pin: "1234" })).json()) as LoginResponse;
+    expect(again).toMatchObject({ status: "ok", defaultPin: true });
   });
 
   it("명단에서 빠진 학생은 토큰이 무효가 되고 연결이 끊긴다", async () => {

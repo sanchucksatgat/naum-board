@@ -168,8 +168,11 @@ const driveFiles = async () => (await (await fetch(`${BASE}/__test/drive`)).json
     classUrl = T.url();
     const names = await T.locator("td.t-strong").allTextContents();
     ok("명단: HTML 이 들어간 이름은 글자 그대로 보임 (태그로 해석 안 됨)", names.some((n) => n.trim() === "<b>최넷</b>") && (await T.locator("td.t-strong b").count()) === 0, names.join(","));
-    const autoPin = await T.locator("tr", { hasText: "20304" }).locator("code.t-pin").textContent();
-    ok("명단: PIN 을 비운 학생은 자동 4자리", /^\d{4}$/.test(autoPin.trim()), autoPin);
+    const autoRow = T.locator("tr", { hasText: "20304" });
+    const autoPin = await autoRow.locator("code.t-pin").textContent();
+    const autoCell = await autoRow.locator("td[data-label=PIN]").textContent();
+    const customPin = await T.locator("tr", { hasText: "20301" }).locator("td[data-label=PIN]").textContent();
+    ok("명단: PIN 을 비운 학생은 '1234 (처음 번호)', 적은 학생은 그 번호", autoPin.trim() === "1234" && /1234\s*\(처음 번호\)/.test(autoCell) && /4821\s*\(처음 번호\)/.test(customPin), `${autoCell} / ${customPin}`);
     await shot(T, "t03-class-roster");
   });
 
@@ -185,6 +188,7 @@ const driveFiles = async () => (await (await fetch(`${BASE}/__test/drive`)).json
     await T.check(`input[name=bf-entry][value=${o.entry}]`);
     if (o.col === "topic") await T.fill("#bf-topics", o.topics.join("\n"));
     if (o.entry === "roster") await T.selectOption("#bf-class", { index: 1 });
+    if (o.noPin) await T.check("input[name=bf-pin][value=nopin]");
     if (o.moderation) await T.check("label.t-check:has-text('승인 후 게시') input");
     if (o.shotForm) await shot(T, o.shotForm);
     await T.click("button[type=submit]:has-text('보드 만들기')");
@@ -260,25 +264,20 @@ const driveFiles = async () => (await (await fetch(`${BASE}/__test/drive`)).json
 
   const A = await newPage(phone, "A-phone");
   const Bd = await newPage(desktop, "B-desktop");
-  async function rosterEnter(p, code, number, pin, newPin) {
+  async function rosterEnter(p, code, number, pin) {
     await p.goto(`${BASE}/b/${code}`);
     await p.fill("#entry-number", number);
     await p.fill("#entry-pin", pin);
     await p.click("button[type=submit]");
-    if (newPin) {
-      await p.waitForSelector("#pin-new");
-      await p.fill("#pin-new", newPin);
-      await p.fill("#pin-again", newPin);
-      await p.click("button[type=submit]");
-    }
     await p.waitForSelector(".wall", { timeout: 15000 });
   }
-  await step("학생 입장 (처음 PIN → 나만의 PIN)", async () => {
+  await step("학생 입장 (명단에 적은 처음 PIN 으로 바로)", async () => {
     await A.goto(`${BASE}/b/${B1()}`);
     await shot(A, "s01-phone-entry");
-    await rosterEnter(A, B1(), "20301", "4821", "2580");
-    await rosterEnter(Bd, B1(), "20302", "5932", "1357");
-    ok("A(휴대폰)·B(데스크톱) 입장", true);
+    await rosterEnter(A, B1(), "20301", "4821");
+    await rosterEnter(Bd, B1(), "20302", "5932");
+    ok("A(휴대폰)·B(데스크톱) 입장 (PIN 을 바꾸라는 화면 없이 바로)", true);
+    ok("A: 따로 받은 처음 PIN 이면 1234 안내 없음", (await A.locator(".pin-nudge").count()) === 0);
     ok("A: 휴대폰 가로 스크롤 없음", await noHScroll(A));
   });
 
@@ -399,12 +398,14 @@ const driveFiles = async () => (await (await fetch(`${BASE}/__test/drive`)).json
 
   await step("닉네임 바꾸기", async () => {
     await A.click(".topbar-me");
-    await A.click("text=✏️ 닉네임 바꾸기");
+    await A.click("text=✏️ 내 정보");
     await A.fill("#nick-input", "별빛");
-    await A.click("button[form=nick-form]");
+    await A.click("button:has-text('닉네임 바꾸기')");
     await A.waitForSelector(".topbar-me >> text=별빛", { timeout: 8000 });
     await Bd.waitForSelector(".col-title >> text=별빛", { timeout: 8000 });
     ok("A 닉네임 → B 화면 칸 이름도 바뀜", true);
+    await A.click("[role=dialog] button:has-text('닫기')");
+    await A.waitForSelector("#nick-input", { state: "detached" });
   });
 
   // ── PIN 5번 틀리면 잠김 → 교사가 풀기 ──
@@ -422,7 +423,7 @@ const driveFiles = async () => (await (await fetch(`${BASE}/__test/drive`)).json
     const tries = [];
     for (let i = 0; i < 5; i++) tries.push(await attempt(String(1000 + i)));
     const last = tries[4];
-    ok("C: 1~4번째는 401, 5번째 틀리면 429 잠김 안내", tries.slice(0, 4).every((t) => t.status === 401) && last.status === 429 && last.code === "student_locked" && /5번 틀렸/.test(last.text), last.text);
+    ok("C: 1~4번째는 401, 5번째 틀리면 429 잠김 안내(쉬운 말, 선생님께)", tries.slice(0, 4).every((t) => t.status === 401) && last.status === 429 && last.code === "student_locked" && /5번 틀려/.test(last.text) && /선생님/.test(last.text), last.text);
     const btnDisabled = await C.locator("button[type=submit]").isDisabled();
     const still = await C.evaluate(async (code) => {
       const r = await fetch(`/api/boards/${code}/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ number: "20303", pin: "7710" }) });
@@ -439,12 +440,59 @@ const driveFiles = async () => (await (await fetch(`${BASE}/__test/drive`)).json
     await C.fill("#entry-number", "20303");
     await C.fill("#entry-pin", "7710");
     await C.click("button[type=submit]");
-    await C.waitForSelector("#pin-new");
-    ok("교사가 잠금 풀면 C 가 바로 들어감 (나만의 PIN 화면)", true);
-    await C.fill("#pin-new", "8642");
-    await C.fill("#pin-again", "8642");
-    await C.click("button[type=submit]");
     await C.waitForSelector(".wall");
+    ok("교사가 잠금 풀면 C 가 바로 들어감", true);
+  });
+
+  // ── 처음 번호 1234 → 안내 → 내 정보에서 닉네임·PIN 바꾸기 → 나갔다가 새 PIN 으로 ──
+  const D = await newPage(phone, "D-phone");
+  await step("처음 번호 1234 로 입장 → 내 정보에서 닉네임·PIN 바꾸기 → 새 PIN 으로 다시 입장", async () => {
+    await rosterEnter(D, B1(), "20304", "1234");
+    await D.waitForSelector(".pin-nudge");
+    const nudge = await D.textContent(".pin-nudge");
+    ok("D: 1234 로 들어오면 바꾸자는 안내 (강제 아님, 보드는 바로 보임)", /처음 번호 1234를 쓰고 있어요/.test(nudge) && (await D.locator(".wall").count()) === 1, nudge.trim());
+    ok("D: 안내가 있어도 휴대폰 가로 스크롤 없음", await noHScroll(D));
+    await shot(D, "s06b-phone-pin-nudge");
+    await D.click(".pin-nudge button:has-text('바꾸기')");
+    await D.waitForSelector("[role=dialog] >> text=내 정보");
+    await D.fill("#nick-input", "새싹");
+    await D.click("button:has-text('닉네임 바꾸기')");
+    await D.waitForSelector(".topbar-me >> text=새싹", { timeout: 8000 });
+    // 1234 는 새 PIN 으로 못 씀
+    await D.fill("#pin-cur", "1234");
+    await D.fill("#pin-new", "1234");
+    await D.fill("#pin-again", "1234");
+    await D.click("button:has-text('PIN 바꾸기')");
+    const err = await D.textContent(".myinfo-section .error-text");
+    ok("D: 새 PIN 1234 는 안 된다고 알려 줌", /1234/.test(err), err);
+    await D.fill("#pin-cur", "1234");
+    await D.fill("#pin-new", "9753");
+    await D.fill("#pin-again", "9753");
+    await shot(D, "s06c-phone-myinfo");
+    const [res] = await Promise.all([D.waitForResponse((r) => r.url().endsWith("/pin")), D.click("button:has-text('PIN 바꾸기')")]);
+    await D.waitForSelector(".myinfo-done");
+    ok("D: PIN 바꾸기 성공 (서버 200)", res.status() === 200, String(res.status()));
+    ok("D: 내 정보 창이 휴대폰 화면 안에 (가로 스크롤 없음)", await noHScroll(D));
+    await D.click("[role=dialog] button:has-text('닫기')");
+    await D.waitForSelector(".status-pill.is-open", { timeout: 10000 });
+    ok("D: PIN 을 바꿔도 보드에 그대로 있고 다시 연결됨, 안내는 사라짐", (await D.locator(".wall").count()) === 1 && (await D.locator(".pin-nudge").count()) === 0);
+    await D.click(".topbar-me");
+    await D.click("text=🚪 나가기");
+    await D.waitForSelector("#entry-pin");
+    await D.fill("#entry-pin", "1234");
+    await D.click("button[type=submit]");
+    await D.waitForSelector(".error-text");
+    ok("D: 나간 뒤 1234 로는 못 들어감", /다시 확인/.test(await D.textContent(".error-text")));
+    await D.fill("#entry-pin", "9753");
+    await D.click("button[type=submit]");
+    await D.waitForSelector(".wall", { timeout: 15000 });
+    ok("D: 새 PIN 으로 다시 입장, 닉네임 그대로, 안내 없음", (await D.textContent(".topbar-me")).includes("새싹") && (await D.locator(".pin-nudge").count()) === 0);
+    await T.goto(classUrl);
+    const row = await T.locator("tr", { hasText: "20304" }).locator("td[data-label=PIN]").textContent();
+    const page = await T.textContent("main");
+    ok("교사 명단: 바꾼 학생은 '바꿈'만 (바꾼 PIN 은 어디에도 없음)", row.includes("바꿈") && !page.includes("9753"), row);
+    await shot(T, "t08b-class-pin-changed");
+    await D.close();
   });
 
   // ── 백업 배지 (실제 30초 알람) ──
@@ -519,7 +567,7 @@ const driveFiles = async () => (await (await fetch(`${BASE}/__test/drive`)).json
 
   // ═════════ 4. 보드2: 모둠별 + 학생당 1카드 → 보관 ═════════
   await step("모둠별 열 + 학생당 1카드", async () => {
-    await rosterEnter(A, boards.B2.code, "20301", "2580");
+    await rosterEnter(A, boards.B2.code, "20301", "4821");
     const titles = await A.locator(".col-title").allTextContents();
     ok("A: 모둠 이름으로 열", titles.some((t) => t.includes("1모둠")) && titles.some((t) => t.includes("2모둠")), titles.join(" | "));
     await A.click(".fab");
@@ -650,6 +698,57 @@ const driveFiles = async () => (await (await fetch(`${BASE}/__test/drive`)).json
     ok("설치 점검: Drive API 꺼짐 안내 + 마지막 단계 미완료로 되돌림", pct < 100, `${pct}%`);
     await shot(T, "t17-setup-check-api-off");
     await setDrive("ok");
+  });
+
+  // ═════════ 6b. PIN 없이 학번만으로 입장하는 보드 ═════════
+  await step("보드 만들기: 명단 · PIN 없이 학번만", async () => {
+    await T.goto(BASE + "/teacher");
+    await T.click("text=+ 새 보드 만들기");
+    await T.check("input[name=bf-entry][value=roster]");
+    const sub = await T.textContent(".t-subchoice");
+    ok("보드 만들기: 명단 입장 아래에 PIN 고르기, 기본은 학번 + PIN, 쉬운 말로 장단점", (await T.isChecked("input[name=bf-pin][value=pin]")) && /PIN 없이 학번만으로 입장/.test(sub) && /친구 학번/.test(sub), sub.slice(0, 120));
+    await T.keyboard.press("Escape");
+    const r = await createBoard("B4", { title: "학번만으로 들어와요", type: "cumulative", col: "student", entry: "roster", noPin: true, shotForm: "t21b-board-form-nopin" });
+    ok("PIN 없는 보드 만듦", /^[0-9]{4}$/.test(r.code), r.code);
+    const shareHint = await T.textContent("[role=dialog]");
+    ok("공유 창: 학번만 입력한다고 안내", /학번을 입력해요/.test(shareHint) && !/1234/.test(shareHint));
+    await T.keyboard.press("Escape");
+    const summary = await T.textContent(".t-dl");
+    ok("보드 관리 요약: '명단 입장 (학번만, PIN 없음)'", summary.includes("학번만, PIN 없음"), summary.slice(0, 100));
+    ok("보드 관리: PIN 없는 보드에는 PIN 쪽지 단추가 없음", (await T.locator("a:has-text('PIN 쪽지 인쇄')").count()) === 0);
+    await shot(T, "t21c-board-manage-nopin");
+  });
+  await step("학생(휴대폰 360px): 학번만 쓰고 이름 확인 → 입장", async () => {
+    const N = await newPage(phone, "N-phone-nopin");
+    await N.goto(`${BASE}/b/${boards.B4.code}`);
+    await N.waitForSelector("#entry-number");
+    ok("PIN 칸이 없음", (await N.locator("#entry-pin").count()) === 0);
+    await shot(N, "s14-phone-nopin-entry");
+    await N.fill("#entry-number", "99999");
+    await N.click("button[type=submit]");
+    await N.waitForSelector(".error-text");
+    ok("없는 학번: '학번을 다시 확인해 주세요.'", (await N.textContent(".error-text")).includes("학번을 다시 확인해 주세요."));
+    await N.fill("#entry-number", "20302");
+    await N.click("button[type=submit]");
+    await N.waitForSelector(".entry-confirm");
+    const q = await N.textContent(".entry-confirm-q");
+    ok("이름 확인: '이두리 맞나요?'", /이두리\s*맞나요\?/.test(q), q);
+    ok("이름 확인 화면: 가로 스크롤 없음", await noHScroll(N));
+    await shot(N, "s15-phone-nopin-confirm");
+    await N.click("text=아니에요");
+    await N.waitForSelector("#entry-number");
+    await N.fill("#entry-number", "20302");
+    await N.click("button[type=submit]");
+    await N.click("button:has-text('네, 맞아요')");
+    await N.waitForSelector(".wall", { timeout: 15000 });
+    ok("학번만으로 입장, 내 칸이 보임", (await N.locator(".col.is-mine").count()) === 1 && (await N.locator(".pin-nudge").count()) === 0);
+    ok("보드 화면: 가로 스크롤 없음", await noHScroll(N));
+    await N.click(".topbar-me");
+    const menu = await N.textContent(".menu");
+    ok("내 정보 메뉴: PIN 없는 보드는 닉네임만", /내 정보 \(닉네임\)/.test(menu), menu);
+    await N.keyboard.press("Escape");
+    await shot(N, "s16-phone-nopin-board");
+    await N.close();
   });
 
   // ═════════ 7. 휴대폰 교사 화면 · 다크 모드 ═════════

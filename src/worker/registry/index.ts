@@ -9,12 +9,12 @@ import {
   type BoardMetaPatch, type BoardRecord, type BoardStats, type CreateBoardInput, type ResolvedBoard,
 } from "./boards";
 import {
-  className, classExists, codeMissBlockedFor, getClassSummary, getStudent, hashPin, insertClass, insertStudents, ipBlockedFor, listClasses, listStudents,
-  pinMatches, randomPin, recordCodeMiss, recordIpFailure, recordStudentFailure, toRosterMember, toTeacherStudent, validateRows, studentRef,
+  className, classExists, codeMissBlockedFor, PIN_LOCK_MS, getClassSummary, getStudent, hashPin, insertClass, insertStudents, ipBlockedFor, listClasses, listStudents,
+  pinMatches, recordCodeMiss, recordIpFailure, recordStudentFailure, toRosterMember, toTeacherStudent, validateRows, studentRef,
   type RosterMember, type StudentRow,
 } from "./roster";
 import { fail, line, pin as pinValue, rpc, rpcAsync, studentNumber, type RpcResult } from "../board/validate";
-import { LIMITS, type BoardSummary, type ClassSummary, type RecentPost, type StudentRowInput, type TeacherStudent } from "../../shared/protocol";
+import { DEFAULT_PIN, LIMITS, type BoardSummary, type ClassSummary, type RecentPost, type StudentRowInput, type TeacherStudent } from "../../shared/protocol";
 
 export type { ClaimOwnerInput, ClaimOwnerResult, OwnerInfo } from "./owner";
 export type { BoardMetaPatch, BoardRecord, BoardStats, CreateBoardInput, ResolvedBoard } from "./boards";
@@ -36,8 +36,10 @@ export interface StudentAuthInfo {
 export interface LoginOutcome {
   board: BoardRecord;
   student: StudentAuthInfo;
-  /** 아직 나만의 PIN 을 안 정함 (초기 PIN 으로 맞춤) */
-  needsSetup: boolean;
+  /** PIN 없이(학번만) 들어옴 — 보드가 나중에 PIN 을 묻게 바뀌면 이 입장은 무효 */
+  noPin: boolean;
+  /** 모두 같은 처음 번호(DEFAULT_PIN)로 들어옴 → 바꾸자고 권한다 */
+  defaultPin: boolean;
 }
 
 function toAuthInfo(r: StudentRow): StudentAuthInfo {
@@ -52,6 +54,11 @@ function toAuthInfo(r: StudentRow): StudentAuthInfo {
     pinVersion: r.pin_version,
     pinRegistered: r.pin_hash !== null,
   };
+}
+
+/** 5번 틀려서 잠김 (학생이 읽는 말) */
+function lockedFail(waitMs: number): never {
+  return fail("student_locked", "PIN을 5번 틀려서 잠깐 잠겼어요. 5분쯤 뒤에 다시 하거나 선생님께 말해 주세요.", 429, waitMs);
 }
 
 /** getAccessToken RPC 결과. RPC 로는 사용자 정의 예외가 그대로 넘어가지 않으므로 결과 값으로 돌려준다. */
@@ -174,7 +181,7 @@ export class Registry extends DurableObject<Env> {
   resolveBoardByCode(code: string): ResolvedBoard | null {
     const r = getBoardRowByCode(this.sql, code);
     if (!r) return null;
-    return { id: r.id, code: r.code, title: r.title, archived: r.archived === 1, entryMode: r.entry_mode, locked: r.locked === 1 };
+    return { id: r.id, code: r.code, title: r.title, archived: r.archived === 1, entryMode: r.entry_mode, requirePin: r.require_pin !== 0, locked: r.locked === 1 };
   }
 
   /**
@@ -185,7 +192,7 @@ export class Registry extends DurableObject<Env> {
   lookupBoardByCode(code: string, ip: string): RpcResult<ResolvedBoard> {
     return rpc(() => {
       const r = this.lookupRow(code, ip, Date.now());
-      return { id: r.id, code: r.code, title: r.title, archived: r.archived === 1, entryMode: r.entry_mode, locked: r.locked === 1 };
+      return { id: r.id, code: r.code, title: r.title, archived: r.archived === 1, entryMode: r.entry_mode, requirePin: r.require_pin !== 0, locked: r.locked === 1 };
     });
   }
 
@@ -308,13 +315,13 @@ export class Registry extends DurableObject<Env> {
     });
   }
 
-  /** PIN 초기화: 새 무작위 초기 PIN, 등록 해제, 잠금 해제, 버전 증가(기존 학생 토큰 무효) */
+  /** PIN 초기화: 처음 번호(DEFAULT_PIN)로, 바꾼 PIN 지움, 잠금 해제, 버전 증가(기존 학생 토큰 무효) */
   resetStudentPin(id: string): RpcResult<TeacherStudent> {
     return rpc(() => {
       if (!getStudent(this.sql, id)) fail("not_found", "학생을 찾을 수 없어요.", 404);
       this.sql.exec(
         `UPDATE students SET pin_hash = NULL, initial_pin = ?, pin_version = pin_version + 1, pin_failed = 0, locked_until = 0, updated_at = ? WHERE id = ?`,
-        randomPin(), Date.now(), id,
+        DEFAULT_PIN, Date.now(), id,
       );
       return toTeacherStudent(getStudent(this.sql, id)!);
     });
@@ -362,24 +369,29 @@ export class Registry extends DurableObject<Env> {
     return secret;
   }
 
-  /** 명단 모드 입장: 학번 + PIN. 학번당 5회 실패 → 5분 잠금, IP 당 분당 실패 제한 */
+  /**
+   * 명단 모드 입장.
+   * - PIN 을 묻는 보드: 학번 + PIN (처음 번호 또는 나만의 PIN). 학번당 5회 실패 → 5분 잠금, IP 당 분당 실패 제한.
+   * - PIN 없는 보드(require_pin = 0): 학번만. 보낸 pin 은 무시. 잠금 없음. 없는 학번은 IP 실패로 센다(명단 훑기 막기).
+   */
   async studentLogin(input: { code: string; number: unknown; pin: unknown; ip: string }): Promise<RpcResult<LoginOutcome>> {
     return rpcAsync(async () => {
       const now = Date.now();
       const ipWait = ipBlockedFor(this.sql, input.ip, now);
-      if (ipWait > 0) fail("too_many_attempts", "시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.", 429, ipWait);
+      if (ipWait > 0) fail("too_many_attempts", "시도가 너무 많아요. 1분쯤 뒤에 다시 해 주세요.", 429, ipWait);
       const b = this.lookupRow(input.code, input.ip, now);
       if (b.archived) fail("archived", "보관된 보드예요. 선생님께 여쭤 보세요.", 403);
       if (b.entry_mode !== "roster") fail("wrong_entry_mode", "이 보드는 닉네임으로 들어가요.", 400);
+      const requirePin = b.require_pin !== 0;
       const badCreds = () => {
         recordIpFailure(this.sql, input.ip, now);
-        return fail("invalid_credentials", "학번 또는 PIN을 다시 확인해 주세요.", 401);
+        return fail("invalid_credentials", requirePin ? "학번 또는 PIN을 다시 확인해 주세요." : "학번을 다시 확인해 주세요.", 401);
       };
       let number: string;
-      let pin: string;
+      let pin = "";
       try {
         number = studentNumber(input.number);
-        pin = pinValue(input.pin);
+        if (requirePin) pin = pinValue(input.pin);
       } catch {
         return badCreds();
       }
@@ -387,47 +399,62 @@ export class Registry extends DurableObject<Env> {
         ? (this.sql.exec<StudentRow & Record<string, SqlStorageValue>>("SELECT * FROM students WHERE class_id = ? AND number = ?", b.class_id, number).toArray()[0] ?? null)
         : null;
       if (!s) return badCreds();
-      if (s.locked_until > now) {
-        fail("student_locked", "PIN을 여러 번 틀렸어요. 5분 뒤에 다시 해 주세요.", 429, s.locked_until - now);
-      }
+      if (!requirePin) return { board: toRecord(b), student: toAuthInfo(s), noPin: true, defaultPin: false };
+      if (s.locked_until > now) lockedFail(s.locked_until - now);
       const hashed = s.pin_hash !== null ? await hashPin(this.pinSecret(), s.pin_salt, pin) : null;
       // await 사이에 바뀌었을 수 있으니 다시 읽는다
       const cur = getStudent(this.sql, s.id);
       if (!cur || cur.pin_salt !== s.pin_salt || cur.pin_hash !== s.pin_hash) return badCreds();
-      if (cur.locked_until > Date.now()) {
-        fail("student_locked", "PIN을 여러 번 틀렸어요. 5분 뒤에 다시 해 주세요.", 429, cur.locked_until - Date.now());
-      }
+      if (cur.locked_until > Date.now()) lockedFail(cur.locked_until - Date.now());
       if (!pinMatches(cur, pin, hashed)) {
         const { locked } = recordStudentFailure(this.sql, cur.id, Date.now());
         recordIpFailure(this.sql, input.ip, now);
-        if (locked) fail("student_locked", "PIN을 5번 틀렸어요. 5분 뒤에 다시 해 주세요.", 429, 5 * 60_000);
+        if (locked) lockedFail(PIN_LOCK_MS);
         return fail("invalid_credentials", "학번 또는 PIN을 다시 확인해 주세요.", 401);
       }
       if (cur.pin_failed > 0) this.sql.exec("UPDATE students SET pin_failed = 0 WHERE id = ?", cur.id);
-      return { board: toRecord(b), student: toAuthInfo(cur), needsSetup: cur.pin_hash === null };
+      return { board: toRecord(b), student: toAuthInfo(cur), noPin: false, defaultPin: cur.pin_hash === null && cur.initial_pin === DEFAULT_PIN };
     });
   }
 
-  /** 처음 입장한 학생이 나만의 PIN 을 정한다 (초기 PIN 확인 후 발급된 setup 토큰 내용으로 호출) */
-  async studentSetPin(input: { boardId: string; studentId: string; pinVersion: number; newPin: unknown }): Promise<RpcResult<{ board: BoardRecord; student: StudentAuthInfo }>> {
+  /**
+   * 학생이 나만의 PIN 으로 바꾼다 (PIN 을 묻는 명단 보드에 들어와 있는 학생, 토큰의 PIN 버전이 지금과 같아야 함).
+   * 지금 PIN 확인은 로그인과 같은 시도 제한을 받는다. 바꾸면 PIN 버전이 올라가 이 학생의 다른 기기 입장은 모두 끝난다
+   * (친구가 처음 번호로 내 이름으로 들어와 있었다면 쫓겨남). 바꾼 기기는 새 토큰을 받는다.
+   */
+  async studentChangePin(input: { studentId: string; pinVersion: number; currentPin: unknown; newPin: unknown; ip: string }): Promise<RpcResult<StudentAuthInfo>> {
     return rpcAsync(async () => {
-      const b = getBoardRow(this.sql, input.boardId) ?? fail("not_found", "보드를 찾을 수 없어요.", 404);
-      if (b.archived) fail("archived", "보관된 보드예요. 선생님께 여쭤 보세요.", 403);
+      const now = Date.now();
+      const ipWait = ipBlockedFor(this.sql, input.ip, now);
+      if (ipWait > 0) fail("too_many_attempts", "시도가 너무 많아요. 1분쯤 뒤에 다시 해 주세요.", 429, ipWait);
       const s = getStudent(this.sql, input.studentId);
-      if (!s || s.class_id !== b.class_id || s.pin_version !== input.pinVersion || s.pin_hash !== null) {
-        fail("unauthorized", "처음부터 다시 입장해 주세요.", 401);
+      if (!s || s.pin_version !== input.pinVersion) fail("unauthorized", "다시 입장해 주세요.", 401);
+      if (s!.locked_until > now) lockedFail(s!.locked_until - now);
+      const next = pinValue(input.newPin, "새 PIN");
+      if (next === DEFAULT_PIN) fail("invalid_pin", `${DEFAULT_PIN}는 모두가 아는 처음 번호라서 쓸 수 없어요. 다른 숫자로 정해 주세요.`);
+      let current: string;
+      try {
+        current = pinValue(input.currentPin, "지금 PIN");
+      } catch {
+        return fail("invalid_credentials", "지금 PIN이 맞지 않아요.", 401);
       }
-      const p = pinValue(input.newPin, "새 PIN");
-      if (p === s!.initial_pin) fail("invalid_pin", "처음 받은 PIN과 다른 숫자 4자리로 정해 주세요.");
-      if (p === "1111" || p === "0000" || p === "1234") fail("invalid_pin", "너무 쉬운 PIN이에요. 다른 숫자 4자리로 정해 주세요.");
-      const hashed = await hashPin(this.pinSecret(), s!.pin_salt, p);
+      const secret = this.pinSecret();
+      const hashed = s!.pin_hash !== null ? await hashPin(secret, s!.pin_salt, current) : null;
+      const newHash = await hashPin(secret, s!.pin_salt, next);
       const cur = getStudent(this.sql, input.studentId);
-      if (!cur || cur.pin_version !== input.pinVersion || cur.pin_hash !== null) fail("unauthorized", "처음부터 다시 입장해 주세요.", 401);
+      if (!cur || cur.pin_version !== input.pinVersion || cur.pin_hash !== s!.pin_hash) fail("unauthorized", "다시 입장해 주세요.", 401);
+      if (cur!.locked_until > Date.now()) lockedFail(cur!.locked_until - Date.now());
+      if (!pinMatches(cur!, current, hashed)) {
+        const { locked } = recordStudentFailure(this.sql, cur!.id, Date.now());
+        recordIpFailure(this.sql, input.ip, now);
+        if (locked) lockedFail(PIN_LOCK_MS);
+        return fail("invalid_credentials", "지금 PIN이 맞지 않아요.", 401);
+      }
       this.sql.exec(
         "UPDATE students SET pin_hash = ?, initial_pin = NULL, pin_version = pin_version + 1, pin_failed = 0, updated_at = ? WHERE id = ?",
-        hashed, Date.now(), input.studentId,
+        newHash, Date.now(), cur!.id,
       );
-      return { board: toRecord(b), student: toAuthInfo(getStudent(this.sql, input.studentId)!) };
+      return toAuthInfo(getStudent(this.sql, cur!.id)!);
     });
   }
 

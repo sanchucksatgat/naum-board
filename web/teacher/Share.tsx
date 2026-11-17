@@ -1,8 +1,8 @@
 /** 학생 입장 공유: 링크·QR (브라우저에서 생성), 프로젝터용 입장 안내 화면 */
 import { useEffect, useMemo, useState } from "preact/hooks";
-import type { BoardSummary } from "../../src/shared/protocol";
+import { DEFAULT_PIN, type BoardSummary } from "../../src/shared/protocol";
 import { api } from "./api";
-import { spacedCode, studentUrl } from "./format";
+import { entryStepText, spacedCode, studentUrl } from "./format";
 import { go } from "./nav";
 import { qrPath } from "./qr";
 import { ErrorBox, Loading, Modal, copyText, toast, useAsync } from "./ui";
@@ -31,7 +31,7 @@ export function QrCode(props: { text: string; label: string; class?: string }) {
   );
 }
 
-type ShareBoard = Pick<BoardSummary, "id" | "code" | "title" | "archived" | "entryMode">;
+type ShareBoard = Pick<BoardSummary, "id" | "code" | "title" | "archived" | "entryMode" | "requirePin">;
 
 export function ShareModal(props: { board: ShareBoard; created?: boolean; onClose: () => void }) {
   const { board } = props;
@@ -65,7 +65,9 @@ export function ShareModal(props: { board: ShareBoard; created?: boolean; onClos
             </div>
           </div>
           <p class="hint">
-            {board.entryMode === "roster" ? "학생은 QR을 찍거나 주소로 들어와 학번과 PIN을 입력해요." : "학생은 QR을 찍거나 주소로 들어와 닉네임만 적으면 돼요."}
+            {board.entryMode === "roster"
+              ? `학생은 QR을 찍거나 주소로 들어와 ${entryStepText(board)}을 입력해요.${board.requirePin === false ? "" : ` 처음 PIN은 모두 ${DEFAULT_PIN}예요.`}`
+              : "학생은 QR을 찍거나 주소로 들어와 닉네임만 적으면 돼요."}
           </p>
           <div class="row">
             <button type="button" class="btn btn-primary" onClick={() => go(`/teacher/boards/${board.id}/projector`)}>
@@ -137,7 +139,7 @@ export function Projector(props: { boardId: string }) {
           <p class="t-projector-url">{shortUrl.replace(/\/b\/.*$/, "")}</p>
           <p class="t-projector-step">에 들어가서 입장 코드를 입력하세요</p>
           <p class={b.code.length > 5 ? "t-projector-code is-long" : "t-projector-code"}>{spacedCode(b.code)}</p>
-          <p class="t-projector-step">{b.entryMode === "roster" ? "그다음 학번과 PIN을 입력해요." : "그다음 닉네임을 적어요."}</p>
+          <p class="t-projector-step">{b.entryMode === "roster" ? `그다음 ${entryStepText(b)}을 입력해요.` : "그다음 닉네임을 적어요."}</p>
         </div>
       </div>
     </main>
